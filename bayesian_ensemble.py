@@ -1,14 +1,41 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.distributions as dist
 from torch.utils.data import TensorDataset, DataLoader
 import numpy as np
-from sklearn.preprocessing import StandardScaler
+
+def peak_weighted_loss(y_pred, y_true, alpha=2.0, beta=0.5):
+    """
+    Custom loss function that puts more emphasis on peaks and hard cases
+    alpha: weight multiplier for peaks
+    beta: threshold for considering a point as a peak (in terms of std above mean)
+    """
+    if len(y_true.shape) == 1:
+        y_true = y_true.view(-1, 1)
+    if len(y_pred.shape) == 1:
+        y_pred = y_pred.view(-1, 1)
+        
+    base_loss = F.mse_loss(y_pred, y_true, reduction='none')
+    
+    # Identify peaks and difficult points
+    mean = y_true.mean()
+    std = y_true.std()
+    peak_mask = (y_true > (mean + beta * std)).float()
+    
+    # Additional weight for points where prediction is far from truth
+    pred_error = torch.abs(y_pred - y_true)
+    error_weight = 1.0 + torch.sigmoid(pred_error - pred_error.mean())
+    
+    # Combine weights
+    total_weight = 1.0 + (alpha - 1.0) * peak_mask * error_weight
+    
+    return (base_loss * total_weight).mean()
 
 class BayesianLinear(nn.Module):
-    def __init__(self, in_features, out_features):
+    def __init__(self, in_features, out_features, prior_std=1.0):
         super().__init__()
+        self.in_features = in_features
+        self.out_features = out_features
         
         # Weight parameters
         self.weight_mu = nn.Parameter(torch.zeros(out_features, in_features))
@@ -18,11 +45,13 @@ class BayesianLinear(nn.Module):
         self.bias_mu = nn.Parameter(torch.zeros(out_features))
         self.bias_rho = nn.Parameter(torch.zeros(out_features))
         
-        # Better initialization
+        # Initialize parameters
         self.weight_mu.data.normal_(0, 0.05)
-        self.weight_rho.data.fill_(-3)
         self.bias_mu.data.normal_(0, 0.05)
+        self.weight_rho.data.fill_(-3)
         self.bias_rho.data.fill_(-3)
+        
+        self.prior_std = prior_std
         
     def forward(self, x, sample=False):
         if sample:
@@ -34,65 +63,42 @@ class BayesianLinear(nn.Module):
             
         return F.linear(x, weight, bias)
 
-class BayesianNeuralNetwork(nn.Module):
-    def __init__(self, input_dim, hidden_dim=64, output_dim=1):  # Increased hidden dim
+class BayesianNetwork(nn.Module):
+    def __init__(self, input_dim, hidden_sizes=[512, 256, 128]):
         super().__init__()
-        self.hidden1 = BayesianLinear(input_dim, hidden_dim)
-        self.hidden2 = BayesianLinear(hidden_dim, hidden_dim)  # Added second hidden layer
-        self.output = BayesianLinear(hidden_dim, output_dim)
+        
+        self.hidden_layers = nn.ModuleList()
+        
+        # Input layer
+        self.hidden_layers.append(BayesianLinear(input_dim, hidden_sizes[0]))
+        
+        # Hidden layers
+        for i in range(len(hidden_sizes)-1):
+            self.hidden_layers.append(BayesianLinear(hidden_sizes[i], hidden_sizes[i+1]))
+            
+        # Output layer
+        self.output_layer = BayesianLinear(hidden_sizes[-1], 1)
+        
+        # Dropout
+        self.dropout = nn.Dropout(0.1)
         
     def forward(self, x, sample=False):
-        x = F.relu(self.hidden1(x, sample))
-        x = F.relu(self.hidden2(x, sample))  # Added second hidden layer
-        return self.output(x, sample)
-    
-    def loss(self, x, y, num_samples=5, kl_weight=0.1):  # Reduced KL weight
-        # Ensure y has correct shape
-        if len(y.shape) == 1:
-            y = y.view(-1, 1)
-        
-        # Multiple forward passes
-        outputs = torch.stack([self.forward(x, sample=True) for _ in range(num_samples)])
-        mean_output = outputs.mean(0)
-        
-        # Negative log likelihood with proper shapes
-        log_likelihood = -F.mse_loss(mean_output, y, reduction='sum')
-        
-        # KL divergence for all layers
-        kl_div = 0
-        for module in self.modules():
-            if isinstance(module, BayesianLinear):
-                kl_div += self._kl_divergence(module)
-        
-        return -log_likelihood + kl_weight * kl_div
-    
-    def _kl_divergence(self, layer):
-        weight_std = torch.log1p(torch.exp(layer.weight_rho))
-        bias_std = torch.log1p(torch.exp(layer.bias_rho))
-        
-        weight_posterior = dist.Normal(layer.weight_mu, weight_std)
-        bias_posterior = dist.Normal(layer.bias_mu, bias_std)
-        
-        weight_prior = dist.Normal(torch.zeros_like(layer.weight_mu), torch.ones_like(layer.weight_mu))
-        bias_prior = dist.Normal(torch.zeros_like(layer.bias_mu), torch.ones_like(layer.bias_mu))
-        
-        return (torch.sum(dist.kl_divergence(weight_posterior, weight_prior)) + 
-                torch.sum(dist.kl_divergence(bias_posterior, bias_prior)))
+        for layer in self.hidden_layers:
+            x = F.relu(layer(x, sample))
+            x = self.dropout(x)
+        return self.output_layer(x, sample)
 
 class GPUBayesianEnsemble:
-    def __init__(self, input_dim, hidden_dim=64, output_dim=1, n_models=5):
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    def __init__(self, input_dim, n_models=10, device=None):
+        self.device = device or torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.input_dim = input_dim
-        self.hidden_dim = hidden_dim
-        self.output_dim = output_dim
         self.n_models = n_models
         self.models = []
         
-    def train(self, X, y, epochs=100, batch_size=32, num_samples=5):
+    def train(self, X, y, epochs=800, batch_size=64, num_samples=10):
         X = torch.FloatTensor(X).to(self.device)
         y = torch.FloatTensor(y).to(self.device)
         
-        # Ensure y has correct shape
         if len(y.shape) == 1:
             y = y.view(-1, 1)
         
@@ -100,30 +106,51 @@ class GPUBayesianEnsemble:
         loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
         
         for i in range(self.n_models):
-            model = BayesianNeuralNetwork(
-                self.input_dim, 
-                self.hidden_dim, 
-                self.output_dim
-            ).to(self.device)
-            
-            optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-            scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=5, factor=0.5)
+            model = BayesianNetwork(self.input_dim).to(self.device)
+            optimizer = torch.optim.AdamW(model.parameters(), lr=0.001, weight_decay=0.01)
+            scheduler = torch.optim.lr_scheduler.OneCycleLR(
+                optimizer, 
+                max_lr=0.01,
+                epochs=epochs,
+                steps_per_epoch=len(loader),
+                pct_start=0.3,
+                anneal_strategy='cos'
+            )
             
             best_loss = float('inf')
+            patience = 20
+            patience_counter = 0
+            
             for epoch in range(epochs):
                 epoch_loss = 0
+                model.train()
+                
                 for batch_X, batch_y in loader:
                     optimizer.zero_grad()
-                    loss = model.loss(batch_X, batch_y, num_samples)
+                    
+                    # Multiple forward passes for MC Dropout
+                    predictions = torch.stack([model(batch_X, sample=True) for _ in range(num_samples)])
+                    pred_mean = predictions.mean(0)
+                    
+                    # Custom loss
+                    loss = peak_weighted_loss(pred_mean, batch_y)
+                    
                     loss.backward()
-                    torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)  # Added gradient clipping
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
                     optimizer.step()
+                    scheduler.step()
+                    
                     epoch_loss += loss.item()
-                
-                scheduler.step(epoch_loss)
                 
                 if epoch_loss < best_loss:
                     best_loss = epoch_loss
+                    patience_counter = 0
+                else:
+                    patience_counter += 1
+                
+                if patience_counter >= patience:
+                    print(f"Early stopping at epoch {epoch}")
+                    break
                 
                 if (epoch + 1) % 20 == 0:
                     print(f"Model {i+1}/{self.n_models}, Epoch {epoch+1}/{epochs}, Loss: {epoch_loss:.4f}")
@@ -135,6 +162,7 @@ class GPUBayesianEnsemble:
         predictions = []
         
         for model in self.models:
+            model.eval()
             model_preds = []
             with torch.no_grad():
                 for _ in range(num_samples):
@@ -147,22 +175,3 @@ class GPUBayesianEnsemble:
         std_pred = np.std(predictions, axis=0).flatten()
         
         return mean_pred, std_pred
-
-def preprocess_data_gpu(df):
-    # Create previous demand feature
-    df['prev_demand'] = df['demand'].shift(1)
-    df = df.dropna()
-    
-    # Select features
-    feature_columns = ['prev_demand', 'temperature', 'is_weekend', 'is_holiday']
-    X = df[feature_columns].values
-    y = df['demand'].values
-    
-    # Scale features and target
-    scaler_X = StandardScaler()
-    scaler_y = StandardScaler()
-    
-    X_scaled = scaler_X.fit_transform(X)
-    y_scaled = scaler_y.fit_transform(y.reshape(-1, 1)).flatten()
-    
-    return X_scaled, y_scaled, scaler_y
