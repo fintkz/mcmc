@@ -73,6 +73,10 @@ def process_gpu_task(task: tuple) -> tuple:
         else:
             features = data.features
 
+        # Log initial shapes
+        logger.info(f"Initial features shape: time={features.size('time')}, features={features.size('features')}")
+        logger.info(f"Temporal features shape: time={data.temporal.size('time')}, temporal_features={data.temporal.size('temporal_features')}")
+
         # Rename temporal features dimension to match features before concatenating
         temporal_aligned = data.temporal.rename(None).rename('time', 'features')
 
@@ -87,6 +91,10 @@ def process_gpu_task(task: tuple) -> tuple:
         # Move tensors to device
         X = X.to(device)
         y = y.to(device)
+
+        # Log pre-scaling shapes
+        logger.info(f"Combined input shape before scaling: time={X.size('time')}, features={X.size('features')}")
+        logger.info(f"Target shape before scaling: time={y.size('time')}")
 
         # Scale features
         scaler_X = StandardScaler()
@@ -103,10 +111,9 @@ def process_gpu_task(task: tuple) -> tuple:
             device=device
         ).squeeze(-1).refine_names('time')
 
-        # Log shapes for verification
-        logger.info(f"Input tensor shape: {dict(X_scaled.shape)}")
-        logger.info(f"Target tensor shape: {dict(y_scaled.shape)}")
-        logger.info(f"Number of features: {X_scaled.size('features')}")
+        # Log post-scaling shapes
+        logger.info(f"Input shape after scaling: time={X_scaled.size('time')}, features={X_scaled.size('features')}")
+        logger.info(f"Target shape after scaling: time={y_scaled.size('time')}")
 
         # Initialize models
         prophet_model = ProphetModel()
@@ -184,7 +191,6 @@ def process_gpu_task(task: tuple) -> tuple:
         logger.error(f"Model training failed for {combo_name}: {str(e)}")
         torch.cuda.empty_cache()
         raise
-
 
 def train_and_evaluate_all_models(data: DatasetFeatures, logger: logging.Logger) -> dict:
     """Train and evaluate all models with named tensors"""
