@@ -4,6 +4,7 @@ from torch.optim.lr_scheduler import OneCycleLR
 from torch.utils.data import TensorDataset, DataLoader
 from utils import peak_weighted_loss
 import numpy as np
+from typing import Union
 
 
 class TimeDistributed(nn.Module):
