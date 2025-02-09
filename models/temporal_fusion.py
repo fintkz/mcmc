@@ -80,14 +80,13 @@ class GatedResidualNetwork(nn.Module):
             x = self.skip(x)
 
         # Gating mechanism
-        combined = torch.cat([x, h], dim='features')
-        gate = torch.sigmoid(self.gate(combined).rename(None)).refine_names('batch', 'time', 'features')
-        output = gate * h + (1 - gate) * x
-
-        # Layer normalization
-        output = self.layer_norm(output.rename(None)).refine_names('batch', 'time', 'features')
-        return output
-
+        combined = torch.cat([x.rename(None), h.rename(None)], dim=-1).refine_names('batch', 'time', 'features')
+        gate = self.gate(combined)
+        gate = torch.sigmoid(gate.rename(None)).refine_names('batch', 'time', 'features')
+        
+        # Element-wise multiplication and layer norm
+        weighted = (gate * h + (1 - gate) * x).rename(None)
+        return self.layer_norm(weighted).refine_names('batch', 'time', 'features')
 
 class TemporalFusionTransformer(nn.Module):
     def __init__(self, num_features: int, hidden_size: int = 64, num_heads: int = 4, dropout: float = 0.1):
