@@ -70,8 +70,10 @@ def process_gpu_task(task: tuple) -> tuple:
 
         # Select features based on combination
         if combo:
+            features_dim = data.features.names.index('features')
             features = data.features.index_select(
-                "features", torch.tensor(list(combo), device=data.features.device)
+                features_dim,  # Use numerical index instead of name
+                torch.tensor(list(combo), device=data.features.device)
             )
         else:
             features = data.features
