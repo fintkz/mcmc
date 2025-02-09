@@ -39,19 +39,21 @@ def prepare_feature_combinations(data: DatasetFeatures, logger: logging.Logger):
     """Generate all possible feature combinations with named tensors"""
     features = data.features  # [time, features]
     temporal = data.temporal  # [time, temporal_features]
-    
+
     # Get feature names
-    feature_names = [f"feature_{i}" for i in range(features.size('features'))]
-    temporal_names = [f"temporal_{i}" for i in range(temporal.size('temporal_features'))]
-    
+    feature_names = [f"feature_{i}" for i in range(features.size("features"))]
+    temporal_names = [
+        f"temporal_{i}" for i in range(temporal.size("temporal_features"))
+    ]
+
     # Generate all possible combinations of feature indices
     all_combinations = []
     for r in range(1, len(feature_names) + 1):
         all_combinations.extend(combinations(range(len(feature_names)), r))
-    
+
     # Add baseline (all features)
     all_combinations = [tuple()] + list(all_combinations)
-    
+
     logger.info(f"Generated {len(all_combinations)} feature combinations")
     return all_combinations
 
@@ -60,7 +62,7 @@ def process_gpu_task(task: tuple) -> tuple:
     """Process a single GPU task with named tensors"""
     combo, gpu_id, data, logger = task
     combo_name = "_".join(map(str, combo)) if combo else "baseline"
-    
+
     try:
         device = torch.device(f"cuda:{gpu_id}")
         torch.cuda.set_device(gpu_id)
@@ -68,24 +70,28 @@ def process_gpu_task(task: tuple) -> tuple:
 
         # Select features based on combination
         if combo:
-            features = data.features.index_select('features', 
-                torch.tensor(list(combo), device=data.features.device))
+            features = data.features.index_select(
+                "features", torch.tensor(list(combo), device=data.features.device)
+            )
         else:
             features = data.features
 
         # Log initial shapes
-        logger.info(f"Initial features shape: time={features.size('time')}, features={features.size('features')}")
-        logger.info(f"Temporal features shape: time={data.temporal.size('time')}, temporal_features={data.temporal.size('temporal_features')}")
+        logger.info(
+            f"Initial features shape: time={features.size('time')}, features={features.size('features')}"
+        )
+        logger.info(
+            f"Temporal features shape: time={data.temporal.size('time')}, temporal_features={data.temporal.size('temporal_features')}"
+        )
 
         # Rename temporal features dimension to match features before concatenating
-        temporal_aligned = data.temporal.rename(None).rename('time', 'features')
+        temporal_aligned = data.temporal.rename(None).rename("time", "features")
 
         # Combine features and temporal features (using unnamed tensors for concatenation)
-        X = torch.cat([
-            features.rename(None),
-            temporal_aligned.rename(None)
-        ], dim=1).refine_names('time', 'features')
-        
+        X = torch.cat(
+            [features.rename(None), temporal_aligned.rename(None)], dim=1
+        ).refine_names("time", "features")
+
         y = data.target
 
         # Move tensors to device
@@ -93,46 +99,51 @@ def process_gpu_task(task: tuple) -> tuple:
         y = y.to(device)
 
         # Log pre-scaling shapes
-        logger.info(f"Combined input shape before scaling: time={X.size('time')}, features={X.size('features')}")
+        logger.info(
+            f"Combined input shape before scaling: time={X.size('time')}, features={X.size('features')}"
+        )
         logger.info(f"Target shape before scaling: time={y.size('time')}")
 
         # Scale features
         scaler_X = StandardScaler()
         scaler_y = StandardScaler()
-        
+
         # Scale while preserving names
         try:
             X_scaled = torch.tensor(
-                scaler_X.fit_transform(X.rename(None).cpu().numpy()),
-                device=device
-            ).refine_names('time', 'features')
+                scaler_X.fit_transform(X.rename(None).cpu().numpy()), device=device
+            ).refine_names("time", "features")
         except ValueError as e:
             logger.error(f"Failed to scale features: {str(e)}")
             raise
-        
-        y_scaled = torch.tensor(
-            scaler_y.fit_transform(y.rename(None).cpu().numpy().reshape(-1, 1)),
-            device=device
-        ).squeeze(-1).refine_names('time')
+
+        y_scaled = (
+            torch.tensor(
+                scaler_y.fit_transform(y.rename(None).cpu().numpy().reshape(-1, 1)),
+                device=device,
+            )
+            .squeeze(-1)
+            .refine_names("time")
+        )
 
         # Log post-scaling shapes
-        logger.info(f"Input shape after scaling: time={X_scaled.size('time')}, features={X_scaled.size('features')}")
+        logger.info(
+            f"Input shape after scaling: time={X_scaled.size('time')}, features={X_scaled.size('features')}"
+        )
         logger.info(f"Target shape after scaling: time={y_scaled.size('time')}")
 
         # Initialize models
         prophet_model = ProphetModel()
-        
+
         tft_model = TFTModel(
-            num_features=X_scaled.size('features'),
+            num_features=X_scaled.size("features"),
             seq_length=30,
             batch_size=32,
-            device=device
-        )
-        
-        bayesian_model = GPUBayesianEnsemble(
-            input_dim=X_scaled.size('features'),
             device=device,
-            batch_size=32
+        )
+
+        bayesian_model = GPUBayesianEnsemble(
+            input_dim=X_scaled.size("features"), device=device, batch_size=32
         )
 
         # Train Prophet (CPU model)
@@ -154,11 +165,13 @@ def process_gpu_task(task: tuple) -> tuple:
         logger.info(f"Training Bayesian for {combo_name}")
         bayesian_model.train(X_scaled, y_scaled)
         bayesian_mean, bayesian_std = bayesian_model.predict(X_scaled)
+
         # Inverse transform predictions and uncertainty
+        # Remove names before reshape operations
         bayesian_mean = scaler_y.inverse_transform(
-            bayesian_mean.reshape(-1, 1)
+            bayesian_mean.rename(None).reshape(-1, 1)
         ).flatten()
-        bayesian_std = bayesian_std * scaler_y.scale_[0]
+        bayesian_std = bayesian_std.rename(None) * scaler_y.scale_[0]
 
         # Move predictions to CPU for evaluation
         y_cpu = y.rename(None).cpu().numpy()
@@ -167,17 +180,17 @@ def process_gpu_task(task: tuple) -> tuple:
         result = {
             "prophet": {
                 "predictions": prophet_preds.tolist(),
-                "metrics": evaluate_predictions(y_cpu, prophet_preds)
+                "metrics": evaluate_predictions(y_cpu, prophet_preds),
             },
             "tft": {
                 "predictions": tft_preds.tolist(),
-                "metrics": evaluate_predictions(y_cpu, tft_preds)
+                "metrics": evaluate_predictions(y_cpu, tft_preds),
             },
             "bayesian": {
                 "predictions": bayesian_mean.tolist(),
                 "uncertainty": bayesian_std.tolist(),
-                "metrics": evaluate_predictions(y_cpu, bayesian_mean)
-            }
+                "metrics": evaluate_predictions(y_cpu, bayesian_mean),
+            },
         }
 
         # Log metrics
@@ -200,12 +213,15 @@ def process_gpu_task(task: tuple) -> tuple:
         # Ensure GPU memory is cleaned up even if successful
         torch.cuda.empty_cache()
 
-def train_and_evaluate_all_models(data: DatasetFeatures, logger: logging.Logger) -> dict:
+
+def train_and_evaluate_all_models(
+    data: DatasetFeatures, logger: logging.Logger
+) -> dict:
     """Train and evaluate all models with named tensors"""
     # Check CUDA availability
     if not torch.cuda.is_available():
         raise RuntimeError("CUDA is not available")
-    
+
     num_gpus = torch.cuda.device_count()
     logger.info(f"Training using {num_gpus} GPUs")
 
