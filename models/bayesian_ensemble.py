@@ -9,7 +9,7 @@ from utils import peak_weighted_loss
 class BayesianLinear(nn.Module):
     def __init__(self, in_features: int, out_features: int):
         super().__init__()
-        self.in_features = in_features
+        self.in_features = in_features  # Store input dimension
         self.out_features = out_features
         
         # Weight parameters
@@ -24,32 +24,28 @@ class BayesianLinear(nn.Module):
         self.reset_parameters()
         
     def reset_parameters(self):
-        """Initialize parameters following the way proposed in the paper."""
         nn.init.kaiming_normal_(self.weight_mu, mode='fan_in', nonlinearity='relu')
         nn.init.constant_(self.weight_rho, -3)
         nn.init.constant_(self.bias_mu, 0.0)
         nn.init.constant_(self.bias_rho, -3)
         
     def forward(self, x: torch.Tensor, sample: bool = False) -> torch.Tensor:
-        """Forward pass with proper tensor name handling"""
-        # Remove names for operations
+        """Forward pass with reparameterization trick"""
+        # Ensure tensor is unnamed
         x = x.rename(None)
         
         # Validate input dimension
-        if x.size(-1) != self.input_dim:
-            raise ValueError(f"Expected {self.input_dim} input features, got {x.size(-1)}")
-
-        # Hidden layers
-        for layer in self.hidden_layers:
-            x = layer(x, sample)  # BayesianLinear already handles unnamed tensors
-            x = F.elu(x.rename(None))  # Explicitly remove names before ELU
-            x = self.dropout(x)  # Dropout works on unnamed tensors
+        if x.size(-1) != self.in_features:  # Use in_features instead of input_dim
+            raise ValueError(f"Expected {self.in_features} input features, got {x.size(-1)}")
         
-        # Output layer
-        output = self.output_layer(x, sample)
-        
-        # Restore names and reshape to match expected dimensions
-        return output.squeeze(-1).refine_names('batch')
+        if sample:
+            weight = self.weight_mu + torch.randn_like(self.weight_mu) * torch.exp(self.weight_rho)
+            bias = self.bias_mu + torch.randn_like(self.bias_mu) * torch.exp(self.bias_rho)
+        else:
+            weight = self.weight_mu
+            bias = self.bias_mu
+            
+        return F.linear(x, weight, bias)  # Return unnamed tensor
 
 
 class BayesianNetwork(nn.Module):
@@ -84,8 +80,8 @@ class BayesianNetwork(nn.Module):
 
         # Hidden layers
         for layer in self.hidden_layers:
-            x = layer(x, sample)
-            x = F.elu(x)  # ELU on unnamed tensor
+            x = layer(x, sample)  # BayesianLinear already handles unnamed tensors
+            x = F.elu(x)  # Already unnamed
             x = self.dropout(x)
         
         # Output layer
