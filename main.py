@@ -101,10 +101,14 @@ def process_gpu_task(task: tuple) -> tuple:
         scaler_y = StandardScaler()
         
         # Scale while preserving names
-        X_scaled = torch.tensor(
-            scaler_X.fit_transform(X.rename(None).cpu().numpy()),
-            device=device
-        ).refine_names('time', 'features')
+        try:
+            X_scaled = torch.tensor(
+                scaler_X.fit_transform(X.rename(None).cpu().numpy()),
+                device=device
+            ).refine_names('time', 'features')
+        except ValueError as e:
+            logger.error(f"Failed to scale features: {str(e)}")
+            raise
         
         y_scaled = torch.tensor(
             scaler_y.fit_transform(y.rename(None).cpu().numpy().reshape(-1, 1)),
@@ -191,6 +195,10 @@ def process_gpu_task(task: tuple) -> tuple:
         logger.error(f"Model training failed for {combo_name}: {str(e)}")
         torch.cuda.empty_cache()
         raise
+
+    finally:
+        # Ensure GPU memory is cleaned up even if successful
+        torch.cuda.empty_cache()
 
 def train_and_evaluate_all_models(data: DatasetFeatures, logger: logging.Logger) -> dict:
     """Train and evaluate all models with named tensors"""

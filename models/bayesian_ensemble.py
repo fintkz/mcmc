@@ -92,9 +92,10 @@ class BayesianNetwork(nn.Module):
         return output.squeeze(-1).refine_names('batch')
 
 
-class GPUBayesianEnsemble:
+class GPUBayesianEnsemble(nn.Module):
     def __init__(self, input_dim: int, n_models: int = 5, device: str = None, 
                  batch_size: int = 32):
+        super().__init__()  # Initialize parent nn.Module
         self.device = device or torch.device(
             "cuda" if torch.cuda.is_available() else "cpu"
         )
@@ -126,84 +127,93 @@ class GPUBayesianEnsemble:
             num_workers=0  # Avoid multiprocessing issues
         )
 
-        # Clear any existing models
-        self.models = []
+        try:
 
-        for i in range(self.n_models):
-            model = BayesianNetwork(self.input_dim).to(self.device)
-            optimizer = torch.optim.AdamW(
-                model.parameters(), 
-                lr=0.001, 
-                weight_decay=0.01
-            )
+            # Clear any existing models
+            self.models = []
 
-            scheduler = torch.optim.lr_scheduler.OneCycleLR(
-                optimizer,
-                max_lr=0.01,
-                epochs=epochs,
-                steps_per_epoch=len(loader),
-                pct_start=0.3,
-                anneal_strategy="cos",
-            )
+            for i in range(self.n_models):
+                model = BayesianNetwork(self.input_dim).to(self.device)
+                optimizer = torch.optim.AdamW(
+                    model.parameters(), 
+                    lr=0.001, 
+                    weight_decay=0.01
+                )
 
-            best_loss = float("inf")
-            patience = 25
-            patience_counter = 0
+                scheduler = torch.optim.lr_scheduler.OneCycleLR(
+                    optimizer,
+                    max_lr=0.01,
+                    epochs=epochs,
+                    steps_per_epoch=len(loader),
+                    pct_start=0.3,
+                    anneal_strategy="cos",
+                )
 
-            for epoch in range(epochs):
-                epoch_loss = 0
-                model.train()
+                best_loss = float("inf")
+                patience = 25
+                patience_counter = 0
 
-                for batch_X, batch_y in loader:
-                    # Move to GPU and restore names
-                    batch_X = batch_X.to(self.device).refine_names('batch', 'features')
-                    batch_y = batch_y.to(self.device).refine_names('batch')
+                for epoch in range(epochs):
+                    epoch_loss = 0
+                    model.train()
 
-                    optimizer.zero_grad()
+                    for batch_X, batch_y in loader:
+                        # Move to GPU and restore names
+                        batch_X = batch_X.to(self.device).refine_names('batch', 'features')
+                        batch_y = batch_y.to(self.device).refine_names('batch')
 
-                    # Multiple forward passes for MC Dropout
-                    predictions = []
-                    for _ in range(num_samples):
-                        pred = model(batch_X, sample=True)
-                        predictions.append(pred.rename(None))
-                    
-                    predictions = torch.stack(predictions, dim=0)  # [samples, batch]
-                    pred_mean = predictions.mean(0)  # Average over samples
+                        optimizer.zero_grad()
 
-                    loss = peak_weighted_loss(pred_mean, batch_y.rename(None))
+                        # Multiple forward passes for MC Dropout
+                        predictions = []
+                        for _ in range(num_samples):
+                            pred = model(batch_X, sample=True)
+                            predictions.append(pred.rename(None))
+                        
+                        predictions = torch.stack(predictions, dim=0)  # [samples, batch]
+                        pred_mean = predictions.mean(0)  # Average over samples
 
-                    loss.backward()
-                    torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-                    optimizer.step()
-                    scheduler.step()
+                        loss = peak_weighted_loss(pred_mean, batch_y.rename(None))
 
-                    epoch_loss += loss.item()
+                        loss.backward()
+                        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+                        optimizer.step()
+                        scheduler.step()
 
-                if epoch_loss < best_loss:
-                    best_loss = epoch_loss
-                    patience_counter = 0
-                else:
-                    patience_counter += 1
+                        epoch_loss += loss.item()
 
-                if patience_counter >= patience:
-                    print(f"Model {i + 1}/{self.n_models}: Early stopping at epoch {epoch}")
-                    break
+                    if epoch_loss < best_loss:
+                        best_loss = epoch_loss
+                        patience_counter = 0
+                    else:
+                        patience_counter += 1
 
-                if (epoch + 1) % 20 == 0:
-                    print(
-                        f"Model {i + 1}/{self.n_models}, "
-                        f"Epoch {epoch + 1}/{epochs}, "
-                        f"Loss: {epoch_loss:.4f}"
-                    )
+                    if patience_counter >= patience:
+                        print(f"Model {i + 1}/{self.n_models}: Early stopping at epoch {epoch}")
+                        break
 
-            self.models.append(model)
+                    if (epoch + 1) % 20 == 0:
+                        print(
+                            f"Model {i + 1}/{self.n_models}, "
+                            f"Epoch {epoch + 1}/{epochs}, "
+                            f"Loss: {epoch_loss:.4f}"
+                        )
+
+                self.models.append(model)
+                torch.cuda.empty_cache()
+
+            print(f"Finished training {self.n_models} models")
+        
+        finally:
+            # Ensure proper cleanup
             torch.cuda.empty_cache()
 
-        print(f"Finished training {self.n_models} models")
 
     def predict(self, X: torch.Tensor, num_samples: int = 100) -> Tuple[torch.Tensor, torch.Tensor]:
         """Generate predictions with uncertainty estimates"""
-        self.eval()  # Set to evaluation mode
+        # Set all models to evaluation mode
+        for model in self.models:
+            model.eval()
         
         # Ensure input is on the correct device
         X = X.to(self.device)
@@ -239,4 +249,8 @@ class GPUBayesianEnsemble:
             mean = mean.refine_names('batch')
             std = std.refine_names('batch')
             
-        return mean, std
+            return mean, std
+
+    def forward(self, X: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Forward pass for the ensemble"""
+        return self.predict(X)

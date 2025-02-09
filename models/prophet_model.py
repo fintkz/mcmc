@@ -1,6 +1,8 @@
 from prophet import Prophet
 import pandas as pd
 import matplotlib.pyplot as plt
+import numpy as np
+from typing import List
 
 
 class ProphetModel:
@@ -13,8 +15,16 @@ class ProphetModel:
         )
         self.has_external = False
 
-    def train_and_predict(self, dates, y):
+    def train_and_predict(self, dates: pd.DatetimeIndex, y: np.ndarray) -> np.ndarray:
         """Train the model and generate predictions"""
+
+        # Should validate inputs and handle potential errors
+        if len(dates) != len(y):
+            raise ValueError("dates and y must have the same length")
+        
+        # Should handle NaN/Inf values that could break Prophet
+        if np.any(np.isnan(y)) or np.any(np.isinf(y)):
+            raise ValueError("Input contains NaN or Inf values")
         # Create DataFrame in Prophet format
         df = pd.DataFrame({
             'ds': dates,
@@ -30,12 +40,13 @@ class ProphetModel:
         
         return forecast['yhat'].values
 
-    def add_external_features(self, feature_names):
+    def add_external_features(self, feature_names: List[str]) -> None:
         """Add external regressors to Prophet"""
         for feature in feature_names:
-            if feature not in ["ds", "y"]:
-                self.model.add_regressor(feature)
-                self.has_external = True
+            if feature in ["ds", "y"]:
+                raise ValueError(f"Cannot use reserved name {feature} as external feature")
+            self.model.add_regressor(feature)
+        self.has_external = bool(feature_names)  # More accurate than just True
 
     def fit(self, df):
         """
