@@ -115,6 +115,9 @@ class SyntheticDataGenerator:
     
     def generate_data(self):
         """Generate complete synthetic dataset"""
+        if self.periods < 365:
+            raise ValueError("Periods should be at least 365 for meaningful seasonal patterns")
+        
         # Generate base demand
         base_demand = self.generate_base_demand()
         
@@ -125,13 +128,13 @@ class SyntheticDataGenerator:
         school_impact, school_dates = self.add_school_schedule(base_demand)
         holiday_impact, holiday_dates = self.add_holidays(base_demand)
         
-        # Combine all effects
-        final_demand = base_demand + promo_effect + weather_impact + \
-                      sports_impact + school_impact + holiday_impact
+        # Ensure non-negative values
+        final_demand = np.maximum(0, base_demand + promo_effect + weather_impact + \
+                    sports_impact + school_impact + holiday_impact)
         
-        # Add some noise
+        # Add some noise (ensure still non-negative)
         noise = np.random.normal(0, base_demand.std() * 0.05, self.periods)
-        final_demand += noise
+        final_demand = np.maximum(0, final_demand + noise)
         
         # Create dates
         dates = [self.start_date + timedelta(days=x) for x in range(self.periods)]
