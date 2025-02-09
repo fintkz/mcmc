@@ -7,18 +7,28 @@ from utils import peak_weighted_loss
 
 
 class BayesianLinear(nn.Module):
-    def __init__(self, in_features, out_features, prior_std=1.0):
+    def __init__(self, in_features: int, out_features: int, prior_std: float = 1.0):
         super().__init__()
         self.in_features = in_features
         self.out_features = out_features
 
-        # Weight parameters
-        self.weight_mu = nn.Parameter(torch.zeros(out_features, in_features))
-        self.weight_rho = nn.Parameter(torch.zeros(out_features, in_features))
+        # Weight parameters with named dimensions
+        weight_mu = torch.zeros(out_features, in_features)
+        weight_mu = weight_mu.refine_names('out_features', 'in_features')
+        self.weight_mu = nn.Parameter(weight_mu)
 
-        # Bias parameters
-        self.bias_mu = nn.Parameter(torch.zeros(out_features))
-        self.bias_rho = nn.Parameter(torch.zeros(out_features))
+        weight_rho = torch.zeros(out_features, in_features)
+        weight_rho = weight_rho.refine_names('out_features', 'in_features')
+        self.weight_rho = nn.Parameter(weight_rho)
+
+        # Bias parameters with named dimensions
+        bias_mu = torch.zeros(out_features)
+        bias_mu = bias_mu.refine_names('out_features')
+        self.bias_mu = nn.Parameter(bias_mu)
+
+        bias_rho = torch.zeros(out_features)
+        bias_rho = bias_rho.refine_names('out_features')
+        self.bias_rho = nn.Parameter(bias_rho)
 
         # Initialize parameters
         self.weight_mu.data.normal_(0, 0.05)
@@ -28,24 +38,36 @@ class BayesianLinear(nn.Module):
 
         self.prior_std = prior_std
 
-    def forward(self, x, sample=False):
+    def forward(self, x: torch.Tensor, sample: bool = False) -> torch.Tensor:
+        # Ensure input has proper names
+        x = x.refine_names('batch', 'features')
+        
+        # Validate input dimension
+        if x.size('features') != self.in_features:
+            raise ValueError(f"Expected {self.in_features} input features, got {x.size('features')}")
+
         if sample:
-            weight = self.weight_mu + torch.log1p(
-                torch.exp(self.weight_rho)
-            ) * torch.randn_like(self.weight_mu)
-            bias = self.bias_mu + torch.log1p(
-                torch.exp(self.bias_rho)
-            ) * torch.randn_like(self.bias_mu)
+            weight = (self.weight_mu + 
+                     torch.log1p(torch.exp(self.weight_rho)) * 
+                     torch.randn_like(self.weight_mu))
+            bias = (self.bias_mu + 
+                   torch.log1p(torch.exp(self.bias_rho)) * 
+                   torch.randn_like(self.bias_mu))
         else:
             weight = self.weight_mu
             bias = self.bias_mu
 
-        return F.linear(x, weight, bias)
+        # Matrix multiplication requires unnamed tensors
+        output = torch.matmul(x.rename(None), weight.rename(None).t()) + bias.rename(None)
+        # Restore names
+        return output.refine_names('batch', 'out_features')
 
 
 class BayesianNetwork(nn.Module):
-    def __init__(self, input_dim, hidden_sizes=[256, 128, 64]):
+    def __init__(self, input_dim: int, hidden_sizes: list = [256, 128, 64]):
         super().__init__()
+        self.input_dim = input_dim
+        self.hidden_sizes = hidden_sizes
 
         self.hidden_layers = nn.ModuleList()
 
@@ -60,79 +82,56 @@ class BayesianNetwork(nn.Module):
 
         # Output layer
         self.output_layer = BayesianLinear(hidden_sizes[-1], 1)
-
-        # Dropout for regularization
         self.dropout = nn.Dropout(0.1)
 
-    def forward(self, x, sample=False):
+    def forward(self, x: torch.Tensor, sample: bool = False) -> torch.Tensor:
+        # Ensure input has proper names
+        x = x.refine_names('batch', 'features')
+        
+        # Validate input dimension
+        if x.size('features') != self.input_dim:
+            raise ValueError(f"Expected {self.input_dim} input features, got {x.size('features')}")
+
         for layer in self.hidden_layers:
             x = F.elu(layer(x, sample))
-            x = self.dropout(x)
-        return self.output_layer(x, sample)
+            x = self.dropout(x.rename(None)).refine_names('batch', 'features')
+        
+        output = self.output_layer(x, sample)
+        return output.align_to('batch', 'target')  # Rename out_features to target
 
 
 class GPUBayesianEnsemble:
-    def __init__(self, input_dim, n_models=5, device=None, batch_size=32):
+    def __init__(self, input_dim: int, n_models: int = 5, device: str = None, 
+                 batch_size: int = 32):
         self.device = device or torch.device(
             "cuda" if torch.cuda.is_available() else "cpu"
         )
         self.input_dim = input_dim
         self.n_models = n_models
-        self.models = []
         self.batch_size = batch_size
+        self.models = []
 
-    def create_temporal_features(self, X):
-        """Create temporal features for the input data"""
-        batch_size = X.shape[0]
+    def train(self, X: torch.Tensor, y: torch.Tensor, epochs: int = 400, 
+             num_samples: int = 10):
+        """Train the ensemble with named tensors"""
+        # Ensure inputs have proper names
+        X = X.refine_names('time', 'features')
+        y = y.refine_names('time')
+        
+        # Validate input dimensions
+        if X.size('features') != self.input_dim:
+            raise ValueError(
+                f"Input dimension mismatch. Expected {self.input_dim}, got {X.size('features')}"
+            )
 
-        # Create time index features
-        time_index = np.arange(batch_size).reshape(-1, 1) / batch_size
-
-        # Create seasonal features
-        day_sin = np.sin(2 * np.pi * time_index * 365)
-        day_cos = np.cos(2 * np.pi * time_index * 365)
-        week_sin = np.sin(2 * np.pi * time_index * 52)
-        week_cos = np.cos(2 * np.pi * time_index * 52)
-
-        # Create lagged features
-        lagged_features = []
-        target_column = X[:, -1:] if len(X.shape) > 1 else X.reshape(-1, 1)
-
-        for lag in [1, 7, 14, 30]:
-            lagged = np.zeros((batch_size, 1))
-            lagged[lag:] = target_column[:-lag]
-            lagged_features.append(lagged)
-
-        # Concatenate all features
-        temporal_features = np.hstack(
-            [day_sin, day_cos, week_sin, week_cos, *lagged_features]
-        )
-
-        # Combine with original features
-        return np.hstack([X, temporal_features])
-
-    def train(self, X, y, epochs=800, num_samples=10):
-        """Train the ensemble of Bayesian neural networks"""
-        # Add temporal features
-        X = self.create_temporal_features(X)
-
-        # Calculate actual input dimension after adding features
-        actual_input_dim = X.shape[1]
-
-        # Keep data on CPU initially
-        X = torch.FloatTensor(X)
-        y = torch.FloatTensor(y)
-
-        if len(y.shape) == 1:
-            y = y.view(-1, 1)
-
-        dataset = TensorDataset(X, y)
+        # Create dataset (TensorDataset doesn't support named tensors)
+        dataset = TensorDataset(X.rename(None), y.rename(None))
         loader = DataLoader(
-            dataset, batch_size=self.batch_size, shuffle=True, pin_memory=False
+            dataset, batch_size=self.batch_size, shuffle=True, pin_memory=True
         )
 
         for i in range(self.n_models):
-            model = BayesianNetwork(actual_input_dim).to(self.device)
+            model = BayesianNetwork(self.input_dim).to(self.device)
             optimizer = torch.optim.AdamW(
                 model.parameters(), lr=0.001, weight_decay=0.01
             )
@@ -155,18 +154,23 @@ class GPUBayesianEnsemble:
                 model.train()
 
                 for batch_X, batch_y in loader:
-                    batch_X = batch_X.to(self.device)
-                    batch_y = batch_y.to(self.device)
+                    # Restore names for tensors
+                    batch_X = batch_X.to(self.device).refine_names('batch', 'features')
+                    batch_y = batch_y.to(self.device).refine_names('batch')
 
                     optimizer.zero_grad()
 
                     # Multiple forward passes for MC Dropout
-                    predictions = torch.stack(
-                        [model(batch_X, sample=True) for _ in range(num_samples)]
-                    )
-                    pred_mean = predictions.mean(0)
+                    predictions = []
+                    for _ in range(num_samples):
+                        pred = model(batch_X, sample=True)
+                        predictions.append(pred.rename(None))
+                    
+                    predictions = torch.stack(predictions, dim='samples')
+                    pred_mean = predictions.mean('samples')
 
-                    loss = peak_weighted_loss(pred_mean, batch_y)
+                    loss = peak_weighted_loss(pred_mean.rename(None), 
+                                           batch_y.rename(None))
 
                     loss.backward()
                     torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
@@ -187,42 +191,49 @@ class GPUBayesianEnsemble:
 
                 if (epoch + 1) % 20 == 0:
                     print(
-                        f"Model {i + 1}/{self.n_models}, Epoch {epoch + 1}/{epochs}, Loss: {epoch_loss:.4f}"
+                        f"Model {i + 1}/{self.n_models}, "
+                        f"Epoch {epoch + 1}/{epochs}, "
+                        f"Loss: {epoch_loss:.4f}"
                     )
 
             self.models.append(model)
-            # Clear some memory
             torch.cuda.empty_cache()
 
-    def predict(self, X):
-        """Generate predictions with uncertainty estimates"""
-        # Add temporal features for prediction
-        X = self.create_temporal_features(X)
+    def predict(self, X: torch.Tensor) -> tuple:
+        """Generate predictions with uncertainty estimates using named tensors"""
+        # Ensure input has proper names
+        X = X.refine_names('time', 'features')
+        
+        # Validate input dimension
+        if X.size('features') != self.input_dim:
+            raise ValueError(
+                f"Input dimension mismatch. Expected {self.input_dim}, got {X.size('features')}"
+            )
 
-        # Keep data on CPU initially
-        X = torch.FloatTensor(X)
         predictions = []
-
         for model in self.models:
             model.eval()
             model_preds = []
 
             with torch.no_grad():
-                # Process in batches to avoid memory issues
+                # Process in batches
                 for i in range(0, len(X), self.batch_size):
-                    batch_X = X[i : i + self.batch_size].to(self.device)
+                    batch_X = X[i:i + self.batch_size].to(self.device)
                     batch_preds = []
 
-                    for _ in range(50):  # MC Dropout samples
+                    # MC Dropout samples
+                    for _ in range(50):
                         pred = model(batch_X, sample=True)
-                        batch_preds.append(pred.cpu().numpy())
+                        batch_preds.append(pred.rename(None))
 
-                    model_preds.extend(np.mean(batch_preds, axis=0))
+                    # Stack along samples dimension
+                    batch_preds = torch.stack(batch_preds, dim='samples')
+                    model_preds.extend(batch_preds.mean('samples').cpu().numpy())
 
             predictions.append(np.array(model_preds))
-            # Clear some memory
             torch.cuda.empty_cache()
 
+        # Stack predictions from all models
         predictions = np.stack(predictions)
         mean_pred = np.mean(predictions, axis=0).flatten()
         std_pred = np.std(predictions, axis=0).flatten()

@@ -1,188 +1,195 @@
+import torch
 import numpy as np
 import pandas as pd
 from datetime import datetime, timedelta
+from typing import Dict, Tuple, NamedTuple
+from dataclasses import dataclass
+
+
+@dataclass
+class DatasetFeatures:
+    """Container for dataset features with named tensors"""
+    features: torch.Tensor  # [time, features]
+    temporal: torch.Tensor  # [time, temporal_features]
+    target: torch.Tensor    # [time]
+    dates: pd.Series
+    feature_dates: Dict
 
 
 class SyntheticDataGenerator:
-    def __init__(self, start_date="2023-01-01", periods=365):
+    def __init__(self, start_date: str = "2023-01-01", periods: int = 365):
+        """Initialize data generator with parameters"""
         self.start_date = datetime.strptime(start_date, "%Y-%m-%d")
         self.periods = periods
-
-    def generate_base_demand(self):
-        """Generate base demand with trend and seasonality"""
-        time = np.arange(self.periods)
-
-        # Trend
-        trend = 1000 + time * 0.5
-
-        # Yearly seasonality
-        yearly = 200 * np.sin(2 * np.pi * time / 365)
-
-        # Weekly seasonality
-        weekly = 50 * np.sin(2 * np.pi * time / 7)
-
-        return trend + yearly + weekly
-
-    def add_promotions(self, base_demand):
-        """Add promotion effects"""
-        # Generate random promotion dates (about 2 per month)
-        promo_dates = np.sort(np.random.choice(self.periods, size=24, replace=False))
-
-        # Effect lasts for 3-5 days with peak on second day
-        promo_effect = np.zeros(self.periods)
-        for date in promo_dates:
-            duration = np.random.randint(3, 6)
-            effect_pattern = np.array([0.5, 1.0, 0.7, 0.3, 0.1])[:duration]
-            end_idx = min(date + duration, self.periods)
-            promo_effect[date:end_idx] += effect_pattern[: end_idx - date]
-
-        return promo_effect * 300, promo_dates
-
-    def add_weather_effects(self, base_demand):
-        """Add weather effects"""
-        # Generate random weather events (extreme temperatures, storms)
-        weather_dates = np.sort(np.random.choice(self.periods, size=30, replace=False))
-
-        weather_effect = np.zeros(self.periods)
-        for date in weather_dates:
-            # Weather events last 1-3 days
-            duration = np.random.randint(1, 4)
-            effect = np.random.choice([-1, 1]) * np.random.uniform(0.1, 0.3)
-            end_idx = min(date + duration, self.periods)
-            weather_effect[date:end_idx] = effect
-
-        return base_demand * weather_effect, weather_dates
-
-    def add_sports_events(self, base_demand):
-        """Add sports event effects"""
-        # Generate random sports events (about 2-3 per month)
-        sports_dates = np.sort(np.random.choice(self.periods, size=30, replace=False))
-
-        sports_effect = np.zeros(self.periods)
-        for date in sports_dates:
-            # Event effect on the day
-            sports_effect[date] = np.random.uniform(0.2, 0.4)
-
-        return base_demand * sports_effect, sports_dates
-
-    def add_school_schedule(self, base_demand):
-        """Add school schedule effects"""
-        # Define school terms and holidays
-        school_effect = np.zeros(self.periods)
-
-        # School terms (roughly aligned with typical academic calendar)
-        terms = [
-            (0, 80),  # Spring term
-            (120, 180),  # Summer term
-            (240, 320),  # Fall term
+        self.feature_names = [
+            'promotions_active',
+            'weather_event',
+            'sports_event',
+            'school_term',
+            'holiday'
+        ]
+        self.temporal_feature_names = [
+            'day_sin', 'day_cos',
+            'week_sin', 'week_cos',
+            'month_sin', 'month_cos'
         ]
 
-        for start, end in terms:
-            school_effect[start:end] = 0.15
+    def generate_base_demand(self) -> torch.Tensor:
+        """Generate base demand with trend and seasonality"""
+        time = torch.arange(self.periods, dtype=torch.float32)
+        time = time.refine_names('time')
 
-        return base_demand * school_effect, [t[0] for t in terms]
+        # Trend
+        trend = 1000 + time.rename(None) * 0.5
 
-    def add_holidays(self, base_demand):
-        """Add holiday effects"""
-        # Major holidays
-        holidays = {
-            # Approximate days in the year for major holidays
-            "new_year": 0,  # Jan 1
-            "easter": 90,  # Around Apr 1
-            "independence": 185,  # July 4
-            "thanksgiving": 330,  # Late November
-            "christmas": 358,  # Dec 25
-        }
+        # Yearly seasonality
+        yearly = 200 * torch.sin(2 * np.pi * time.rename(None) / 365)
 
-        holiday_effect = np.zeros(self.periods)
-        holiday_dates = []
+        # Weekly seasonality
+        weekly = 50 * torch.sin(2 * np.pi * time.rename(None) / 7)
 
-        for day in holidays.values():
-            if day < self.periods:
-                # Effect starts a few days before
-                start = max(0, day - 3)
-                end = min(self.periods, day + 2)
-                effect_pattern = np.array([0.2, 0.5, 1.0, 0.5, 0.2])
-                holiday_effect[start:end] += effect_pattern[: end - start]
-                holiday_dates.append(day)
+        base_demand = (trend + yearly + weekly).refine_names('time')
+        return base_demand
 
-        return base_demand * holiday_effect, sorted(holiday_dates)
+    def add_promotions(self, base_demand: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Add promotion effects with named tensors"""
+        # Generate random promotion dates (about 2 per month)
+        promo_dates = torch.sort(torch.randperm(self.periods)[:24])[0]
+        
+        # Effect lasts for 3-5 days with peak on second day
+        promo_effect = torch.zeros(self.periods).refine_names('time')
+        promo_indicator = torch.zeros(self.periods).refine_names('time')
+        
+        for date in promo_dates:
+            duration = torch.randint(3, 6, (1,)).item()
+            effect_pattern = torch.tensor([0.5, 1.0, 0.7, 0.3, 0.1][:duration])
+            end_idx = min(date.item() + duration, self.periods)
+            promo_effect.rename(None)[date:end_idx] += effect_pattern[:end_idx - date]
+            promo_indicator.rename(None)[date] = 1
 
-    def generate_data(self):
-        """Generate complete synthetic dataset"""
+        return promo_effect * 300, promo_indicator
+
+    def add_weather_effects(self, base_demand: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Add weather effects with named tensors"""
+        weather_dates = torch.sort(torch.randperm(self.periods)[:30])[0]
+        
+        weather_effect = torch.zeros(self.periods).refine_names('time')
+        weather_indicator = torch.zeros(self.periods).refine_names('time')
+        
+        for date in weather_dates:
+            duration = torch.randint(1, 4, (1,)).item()
+            effect = torch.randn(1).item() * 0.2  # Random effect between -0.2 and 0.2
+            end_idx = min(date.item() + duration, self.periods)
+            weather_effect.rename(None)[date:end_idx] = effect
+            weather_indicator.rename(None)[date] = 1
+
+        return base_demand * weather_effect, weather_indicator
+
+    def create_temporal_features(self, dates: pd.Series) -> torch.Tensor:
+        """Create temporal features with named dimensions"""
+        time = torch.arange(self.periods, dtype=torch.float32)
+        time = time.refine_names('time')
+        
+        # Create cyclical features
+        day_of_year = torch.tensor(dates.dt.dayofyear.values, dtype=torch.float32)
+        week_of_year = torch.tensor(dates.dt.isocalendar().week.values, dtype=torch.float32)
+        month = torch.tensor(dates.dt.month.values, dtype=torch.float32)
+        
+        # Stack all temporal features
+        temporal_features = torch.stack([
+            torch.sin(2 * np.pi * day_of_year / 365),
+            torch.cos(2 * np.pi * day_of_year / 365),
+            torch.sin(2 * np.pi * week_of_year / 52),
+            torch.cos(2 * np.pi * week_of_year / 52),
+            torch.sin(2 * np.pi * month / 12),
+            torch.cos(2 * np.pi * month / 12)
+        ], dim='temporal_features')
+        
+        return temporal_features.align_to('time', 'temporal_features')
+
+    def generate_data(self) -> DatasetFeatures:
+        """Generate complete synthetic dataset with named tensors"""
         if self.periods < 365:
-            raise ValueError(
-                "Periods should be at least 365 for meaningful seasonal patterns"
-            )
+            raise ValueError("Periods should be at least 365 for meaningful seasonal patterns")
 
         # Generate base demand
         base_demand = self.generate_base_demand()
-
-        if np.any(np.isnan(base_demand)) or np.any(np.isinf(base_demand)):
+        
+        # Validate base demand
+        if torch.any(torch.isnan(base_demand)) or torch.any(torch.isinf(base_demand)):
             raise ValueError("Invalid values in base demand generation")
 
-        # Add feature effects with validation
         try:
-            promo_effect, promo_dates = self.add_promotions(base_demand)
-            weather_impact, weather_dates = self.add_weather_effects(base_demand)
-            sports_impact, sports_dates = self.add_sports_events(base_demand)
-            school_impact, school_dates = self.add_school_schedule(base_demand)
-            holiday_impact, holiday_dates = self.add_holidays(base_demand)
+            # Generate all effects and their indicators
+            promo_effect, promo_indicator = self.add_promotions(base_demand)
+            weather_effect, weather_indicator = self.add_weather_effects(base_demand)
+            
+            # Stack all feature indicators
+            features = torch.stack([
+                promo_indicator,
+                weather_indicator,
+                torch.zeros(self.periods).refine_names('time'),  # sports placeholder
+                torch.zeros(self.periods).refine_names('time'),  # school placeholder
+                torch.zeros(self.periods).refine_names('time')   # holiday placeholder
+            ], dim='features')
+            
+            # Combine all effects
+            final_demand = base_demand + promo_effect + weather_effect
+            
+            # Add noise
+            noise = torch.randn(self.periods) * (base_demand.rename(None).std() * 0.05)
+            final_demand = torch.maximum(
+                torch.zeros_like(final_demand.rename(None)),
+                final_demand.rename(None) + noise
+            ).refine_names('time')
+
         except Exception as e:
             raise ValueError(f"Error generating features: {str(e)}")
 
-        # Ensure non-negative values
-        final_demand = np.maximum(
-            0,
-            base_demand
-            + promo_effect
-            + weather_impact
-            + sports_impact
-            + school_impact
-            + holiday_impact,
-        )
-
-        # Add some noise (ensure still non-negative)
-        noise = np.random.normal(0, base_demand.std() * 0.05, self.periods)
-        final_demand = np.maximum(0, final_demand + noise)
-
         # Create dates
-        dates = [self.start_date + timedelta(days=x) for x in range(self.periods)]
-
-        # Create DataFrame
-        df = pd.DataFrame(
-            {
-                "ds": dates,
-                "y": final_demand,
-                "promotions_active": 0,
-                "weather_event": 0,
-                "sports_event": 0,
-                "school_term": 0,
-                "holiday": 0,
-            }
+        dates = pd.date_range(
+            start=self.start_date,
+            periods=self.periods,
+            freq='D'
         )
 
-        # Mark feature occurrences
-        df.loc[promo_dates, "promotions_active"] = 1
-        df.loc[weather_dates, "weather_event"] = 1
-        df.loc[sports_dates, "sports_event"] = 1
-        df.loc[school_dates, "school_term"] = 1
-        df.loc[holiday_dates, "holiday"] = 1
+        # Create temporal features
+        temporal_features = self.create_temporal_features(pd.Series(dates))
 
+        # Store feature dates for reference
         feature_dates = {
-            "promotions": promo_dates.tolist(),
-            "weather": weather_dates.tolist(),
-            "sports": sports_dates.tolist(),
-            "school": school_dates,
-            "holidays": holiday_dates,
+            'promotions': promo_indicator.rename(None).nonzero().squeeze().tolist(),
+            'weather': weather_indicator.rename(None).nonzero().squeeze().tolist(),
+            'sports': [],
+            'school': [],
+            'holidays': []
         }
 
-        return df, feature_dates
+        # Validate final shapes
+        assert features.size('time') == self.periods
+        assert features.size('features') == len(self.feature_names)
+        assert temporal_features.size('time') == self.periods
+        assert temporal_features.size('temporal_features') == len(self.temporal_feature_names)
+        assert final_demand.size('time') == self.periods
+
+        return DatasetFeatures(
+            features=features,                    # [time, features]
+            temporal=temporal_features,           # [time, temporal_features]
+            target=final_demand,                 # [time]
+            dates=pd.Series(dates),
+            feature_dates=feature_dates
+        )
 
 
 if __name__ == "__main__":
     # Test data generation
     generator = SyntheticDataGenerator()
-    df, feature_dates = generator.generate_data()
-    print(df.head())
-    print("\nFeature dates:", feature_dates)
+    data = generator.generate_data()
+    
+    print("\nFeature tensor shape:", dict(data.features.shape))
+    print("Temporal features shape:", dict(data.temporal.shape))
+    print("Target shape:", dict(data.target.shape))
+    print("\nFeature names:", generator.feature_names)
+    print("Temporal feature names:", generator.temporal_feature_names)
+    print("\nFirst few dates:", data.dates.head())
+    print("\nFeature dates:", data.feature_dates)

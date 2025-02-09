@@ -5,7 +5,7 @@ import json
 from itertools import combinations
 from pathlib import Path
 import torch
-from data import SyntheticDataGenerator
+from data import SyntheticDataGenerator, DatasetFeatures
 from models.prophet_model import ProphetModel
 from models.temporal_fusion import TFTModel
 from models.bayesian_ensemble import GPUBayesianEnsemble
@@ -24,236 +24,174 @@ def setup_logging():
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     log_file = log_dir / f"work_log_{timestamp}.txt"
 
-    # Configure logging
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s - %(levelname)s - %(message)s",
         handlers=[
             logging.FileHandler(log_file),
-            logging.StreamHandler(),  # Also print to console
+            logging.StreamHandler(),
         ],
     )
     return logging.getLogger(__name__)
 
 
-def create_temporal_features(df):
-    """Create temporal features for the dataset"""
-    # Basic time features
-    df["day_of_year"] = df["ds"].dt.dayofyear
-    df["day_of_week"] = df["ds"].dt.dayofweek
-    df["month"] = df["ds"].dt.month
-    df["week_of_year"] = df["ds"].dt.isocalendar().week
-
-    # Cyclical encoding of temporal features
-    df["day_sin"] = np.sin(2 * np.pi * df["day_of_year"] / 365)
-    df["day_cos"] = np.cos(2 * np.pi * df["day_of_year"] / 365)
-    df["week_sin"] = np.sin(2 * np.pi * df["day_of_week"] / 7)
-    df["week_cos"] = np.cos(2 * np.pi * df["day_of_week"] / 7)
-    df["month_sin"] = np.sin(2 * np.pi * df["month"] / 12)
-    df["month_cos"] = np.cos(2 * np.pi * df["month"] / 12)
-
-    # Create lag features
-    for lag in [1, 7, 14, 30]:  # Common time series lags
-        df[f"lag_{lag}"] = df["y"].shift(lag)
-
-    # Fill NaN values in lag features with 0
-    df = df.fillna(0)
-
-    return df
-
-
-def prepare_feature_combinations(df, features):
-    """Generate all possible feature combinations and corresponding datasets"""
+def prepare_feature_combinations(data: DatasetFeatures, logger: logging.Logger):
+    """Generate all possible feature combinations with named tensors"""
+    features = data.features  # [time, features]
+    temporal = data.temporal  # [time, temporal_features]
+    
+    # Get feature names
+    feature_names = [f"feature_{i}" for i in range(features.size('features'))]
+    temporal_names = [f"temporal_{i}" for i in range(temporal.size('temporal_features'))]
+    
+    # Generate all possible combinations of feature indices
     all_combinations = []
-    for r in range(len(features) + 1):
-        all_combinations.extend(combinations(features, r))
-    return list(all_combinations)
+    for r in range(1, len(feature_names) + 1):
+        all_combinations.extend(combinations(range(len(feature_names)), r))
+    
+    # Add baseline (all features)
+    all_combinations = [tuple()] + list(all_combinations)
+    
+    logger.info(f"Generated {len(all_combinations)} feature combinations")
+    return all_combinations
 
 
-def process_gpu_task(task):
-    """Process a single GPU task"""
-    combo, gpu_id, features, temporal_features, df, logger = task
+def process_gpu_task(task: tuple) -> tuple:
+    """Process a single GPU task with named tensors"""
+    combo, gpu_id, data, logger = task
+    combo_name = "_".join(map(str, combo)) if combo else "baseline"
+    
     try:
-        device = f"cuda:{gpu_id}"
+        device = torch.device(f"cuda:{gpu_id}")
         torch.cuda.set_device(gpu_id)
-
-        # Check available memory
-        torch.cuda.empty_cache()
-        if (
-            torch.cuda.memory_allocated(gpu_id)
-            > 0.9 * torch.cuda.get_device_properties(gpu_id).total_memory
-        ):
-            logger.warning(
-                f"GPU {gpu_id} memory is almost full, waiting for cleanup..."
-            )
-            torch.cuda.empty_cache()
-            time.sleep(5)  # Wait for memory cleanup
-
-        combo_name = "_".join(combo) if combo else "baseline"
         logger.info(f"\nTraining models for combination: {combo_name} on GPU {gpu_id}")
 
-        # Create a copy of the dataframe and scale the target variable
-        df_subset = df.copy()
-        scaler = StandardScaler()
-        y_scaled = scaler.fit_transform(df_subset["y"].values.reshape(-1, 1)).flatten()
-        df_subset["y"] = y_scaled
+        # Select features based on combination
+        if combo:
+            features = data.features.index_select('features', 
+                torch.tensor(list(combo), device=data.features.device))
+        else:
+            features = data.features
 
-        # For missing features, set their values to 0
-        missing_features = set(features) - set(combo)
-        for feature in missing_features:
-            df_subset[feature] = 0
+        # Combine features and temporal features
+        X = torch.cat([features, data.temporal], dim='features')
+        y = data.target
 
-        # Prepare feature matrix with temporal features
-        feature_matrix = df_subset[list(features)].values
-        temporal_matrix = df_subset[temporal_features].values
-        X = np.hstack([feature_matrix, temporal_matrix])
-        y = df_subset["y"].values
+        # Scale features
+        scaler_X = StandardScaler()
+        scaler_y = StandardScaler()
+        
+        # Scale while preserving names
+        X_scaled = torch.tensor(
+            scaler_X.fit_transform(X.rename(None))
+        ).refine_names('time', 'features')
+        
+        y_scaled = torch.tensor(
+            scaler_y.fit_transform(y.rename(None).unsqueeze(-1))
+        ).squeeze(-1).refine_names('time')
 
-        # Validate input data
-        if np.any(np.isnan(X)) or np.any(np.isinf(X)):
-            raise ValueError("Invalid values in feature matrix")
-        if np.any(np.isnan(y)) or np.any(np.isinf(y)):
-            raise ValueError("Invalid values in target variable")
+        # Log shapes for verification
+        logger.info(f"Input tensor shape: {dict(X_scaled.shape)}")
+        logger.info(f"Target tensor shape: {dict(y_scaled.shape)}")
 
-        try:
-            # Prophet
-            logger.info(f"Training Prophet for {combo_name}")
-            prophet_model = ProphetModel()
-            # Use unscaled data for Prophet
-            prophet_df = pd.DataFrame({"ds": df["ds"], "y": df["y"]})
-            for feature in combo:
-                prophet_df[feature] = df[feature]
-            prophet_model.add_external_features(list(combo))
-            prophet_model.fit(prophet_df)
-            prophet_forecast = prophet_model.predict(prophet_df)
+        # Initialize models
+        prophet_model = ProphetModel()
+        
+        tft_model = TFTModel(
+            num_features=X_scaled.size('features'),
+            seq_length=30,
+            batch_size=32,
+            device=device
+        )
+        
+        bayesian_model = GPUBayesianEnsemble(
+            input_dim=X_scaled.size('features'),
+            device=device,
+            batch_size=32
+        )
 
-            # TFT
-            logger.info(f"Training TFT for {combo_name}")
-            tft_model = TFTModel(
-                num_features=X.shape[1], seq_length=30, batch_size=32, device=device
-            )
-            tft_model.train(X, y)
-            tft_preds = tft_model.predict(X)
+        # Train Prophet
+        logger.info(f"Training Prophet for {combo_name}")
+        prophet_preds = prophet_model.train_and_predict(
+            data.dates, y.rename(None).numpy()
+        )
 
-            # Clear CUDA cache after TFT
-            torch.cuda.empty_cache()
+        # Train TFT
+        logger.info(f"Training TFT for {combo_name}")
+        tft_model.train(X_scaled, y_scaled)
+        tft_preds = tft_model.predict(X_scaled)
+        # Inverse transform predictions
+        tft_preds = scaler_y.inverse_transform(tft_preds.reshape(-1, 1)).flatten()
 
-            # Bayesian
-            logger.info(f"Training Bayesian for {combo_name}")
-            bayesian_model = GPUBayesianEnsemble(
-                input_dim=X.shape[1], device=device, batch_size=32
-            )
-            bayesian_model.train(X, y)
-            bayesian_mean, bayesian_std = bayesian_model.predict(X)
+        # Train Bayesian
+        logger.info(f"Training Bayesian for {combo_name}")
+        bayesian_model.train(X_scaled, y_scaled)
+        bayesian_mean, bayesian_std = bayesian_model.predict(X_scaled)
+        # Inverse transform predictions and uncertainty
+        bayesian_mean = scaler_y.inverse_transform(
+            bayesian_mean.reshape(-1, 1)
+        ).flatten()
+        bayesian_std = bayesian_std * scaler_y.scale_[0]
 
-            # Clear CUDA cache after Bayesian
-            torch.cuda.empty_cache()
-
-            # Inverse transform predictions
-            prophet_forecast_orig = (
-                prophet_forecast.copy()
-            )  # Prophet already in original scale
-            tft_preds_orig = scaler.inverse_transform(
-                tft_preds.reshape(-1, 1)
-            ).flatten()
-            bayesian_mean_orig = scaler.inverse_transform(
-                bayesian_mean.reshape(-1, 1)
-            ).flatten()
-            bayesian_std_orig = bayesian_std * scaler.scale_[0]  # Scale the uncertainty
-
-            # Store results
-            result = {
-                "prophet": {
-                    "yhat": prophet_forecast_orig["yhat"].tolist(),
-                    "yhat_lower": prophet_forecast_orig["yhat_lower"].tolist(),
-                    "yhat_upper": prophet_forecast_orig["yhat_upper"].tolist(),
-                    "metrics": evaluate_predictions(
-                        df["y"].values, prophet_forecast_orig["yhat"]
-                    ),
-                },
-                "tft": {
-                    "yhat": tft_preds_orig.tolist(),
-                    "metrics": evaluate_predictions(df["y"].values, tft_preds_orig),
-                },
-                "bayesian": {
-                    "yhat": bayesian_mean_orig.tolist(),
-                    "uncertainty": bayesian_std_orig.tolist(),
-                    "metrics": evaluate_predictions(df["y"].values, bayesian_mean_orig),
-                },
+        # Evaluate predictions
+        result = {
+            "prophet": {
+                "predictions": prophet_preds.tolist(),
+                "metrics": evaluate_predictions(y.rename(None).numpy(), prophet_preds)
+            },
+            "tft": {
+                "predictions": tft_preds.tolist(),
+                "metrics": evaluate_predictions(y.rename(None).numpy(), tft_preds)
+            },
+            "bayesian": {
+                "predictions": bayesian_mean.tolist(),
+                "uncertainty": bayesian_std.tolist(),
+                "metrics": evaluate_predictions(y.rename(None).numpy(), bayesian_mean)
             }
+        }
 
-            # Log metrics
-            logger.info(f"Results for {combo_name} on GPU {gpu_id}:")
-            logger.info(f"Prophet MAPE: {result['prophet']['metrics']['mape']:.2f}%")
-            logger.info(f"TFT MAPE: {result['tft']['metrics']['mape']:.2f}%")
-            logger.info(f"Bayesian MAPE: {result['bayesian']['metrics']['mape']:.2f}%")
+        # Log metrics
+        logger.info(f"Prophet MAPE: {result['prophet']['metrics']['mape']:.2f}%")
+        logger.info(f"TFT MAPE: {result['tft']['metrics']['mape']:.2f}%")
+        logger.info(f"Bayesian MAPE: {result['bayesian']['metrics']['mape']:.2f}%")
 
-            return combo_name, result
-
-        except Exception as e:
-            logger.error(f"Model training failed for {combo_name}: {str(e)}")
-            torch.cuda.empty_cache()
-            raise
+        return combo_name, result
 
     except Exception as e:
-        logger.error(
-            f"Error processing combination {combo_name} on GPU {gpu_id}: {str(e)}"
-        )
-        torch.cuda.empty_cache()  # Clear CUDA cache on error
+        logger.error(f"Model training failed for {combo_name}: {str(e)}")
+        torch.cuda.empty_cache()
         raise
 
 
-def train_and_evaluate_all_models(df, feature_dates, logger):
-    """Train all models with different feature combinations using multiple GPUs"""
-    features = [
-        "promotions_active",
-        "weather_event",
-        "sports_event",
-        "school_term",
-        "holiday",
-    ]
-
-    # Add temporal features
-    logger.info("Creating temporal features...")
-    df = create_temporal_features(df)
-    temporal_features = [
-        "day_sin",
-        "day_cos",
-        "week_sin",
-        "week_cos",
-        "month_sin",
-        "month_cos",
-        "lag_1",
-        "lag_7",
-        "lag_14",
-        "lag_30",
-    ]
-
-    # Get feature combinations
-    combinations = prepare_feature_combinations(df, features)
-
-    # Get number of available GPUs
+def train_and_evaluate_all_models(data: DatasetFeatures, logger: logging.Logger) -> dict:
+    """Train and evaluate all models with named tensors"""
+    # Check CUDA availability
+    if not torch.cuda.is_available():
+        raise RuntimeError("CUDA is not available")
+    
     num_gpus = torch.cuda.device_count()
     logger.info(f"Training using {num_gpus} GPUs")
+
+    # Generate feature combinations
+    combinations = prepare_feature_combinations(data, logger)
 
     # Prepare tasks
     tasks = []
     for i, combo in enumerate(combinations):
         gpu_id = i % num_gpus
-        tasks.append((combo, gpu_id, features, temporal_features, df, logger))
+        tasks.append((combo, gpu_id, data, logger))
 
     # Initialize results
     results = {
-        "feature_dates": feature_dates,
-        "actual": df["y"].tolist(),
+        "feature_dates": data.feature_dates,
+        "actual": data.target.rename(None).tolist(),
         "predictions": {},
     }
 
-    # Process tasks sequentially for each GPU
+    # Process tasks
     for task in tasks:
         combo_name, result = process_gpu_task(task)
         results["predictions"][combo_name] = result
-        # Clear CUDA cache after each task
         torch.cuda.empty_cache()
 
     return results
@@ -264,7 +202,7 @@ def main():
     logger = setup_logging()
 
     try:
-        # Enable anomaly detection for better error messages
+        # Enable anomaly detection
         torch.autograd.set_detect_anomaly(True)
 
         # Log system information
@@ -279,11 +217,11 @@ def main():
         # Generate synthetic data
         logger.info("Generating synthetic data...")
         generator = SyntheticDataGenerator()
-        df, feature_dates = generator.generate_data()
+        data = generator.generate_data()
 
         # Train models and get predictions
         logger.info("Starting model training...")
-        results = train_and_evaluate_all_models(df, feature_dates, logger)
+        results = train_and_evaluate_all_models(data, logger)
 
         # Save results
         logger.info("Saving results...")
@@ -294,7 +232,6 @@ def main():
 
     except Exception as e:
         logger.error(f"An error occurred: {str(e)}", exc_info=True)
-        # Clear CUDA cache on error
         torch.cuda.empty_cache()
         raise
 
