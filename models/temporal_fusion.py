@@ -20,11 +20,15 @@ class TimeDistributed(nn.Module):
         if x.names.count(None) == 0:  # All dimensions are named
             # Flatten batch and time for module application
             x_reshape = x.align_to('batch', 'time', 'features').rename(None)
-            x_reshape = x_reshape.view(-1, x_reshape.size(-1))
+            # Use reshape instead of view
+            x_reshape = x_reshape.reshape(-1, x_reshape.size(-1))
             y = self.module(x_reshape)
             
             # Restore batch and time dimensions
-            return y.view(x.size('batch'), -1, y.size(-1)).refine_names('batch', 'time', 'features')
+            batch_size = x.size('batch')
+            time_size = x.size('time')
+            y = y.reshape(batch_size, time_size, -1)
+            return y.refine_names('batch', 'time', 'features')
         else:
             return self.module(x.rename(None)).refine_names('batch', 'features')
 
