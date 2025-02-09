@@ -94,9 +94,6 @@ class TemporalFusionTransformer(nn.Module):
         self.num_features = num_features
         self.hidden_size = hidden_size
 
-        if hidden_size % num_heads != 0:
-            raise ValueError(f"Hidden size ({hidden_size}) must be divisible by num_heads ({num_heads})")
-
         # Project input to hidden size
         self.input_projection = TimeDistributed(nn.Linear(num_features, hidden_size))
 
@@ -109,8 +106,16 @@ class TemporalFusionTransformer(nn.Module):
         # Multi-head attention
         self.attention = nn.MultiheadAttention(hidden_size, num_heads, dropout=dropout)
 
-        # Final processing
-        self.final_grn = GatedResidualNetwork(hidden_size, hidden_size, 1, dropout)
+        # Final processing - FIXED: input and output sizes
+        self.final_grn = GatedResidualNetwork(
+            input_size=hidden_size,    # Input is hidden_size from attention
+            hidden_size=hidden_size,   # Keep same hidden size
+            output_size=hidden_size,   # Keep hidden size for gating
+            dropout=dropout
+        )
+        
+        # Final projection to single output - NEW
+        self.output_projection = TimeDistributed(nn.Linear(hidden_size, 1))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass with named tensors"""
@@ -138,8 +143,13 @@ class TemporalFusionTransformer(nn.Module):
         )
         attended = attended.permute(1, 0, 2).refine_names('batch', 'time', 'features')
 
-        # Final processing
-        output = self.final_grn(attended)
+        # Final processing with GRN
+        processed = self.final_grn(attended)
+        
+        # Project to single output value
+        output = self.output_projection(processed)
+        
+        # Return shape: [batch, time, 1]
         return output
 
 
