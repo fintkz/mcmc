@@ -18,10 +18,15 @@ class TimeDistributed(nn.Module):
         x = x.refine_names('batch', ..., 'features')
         
         if x.names.count(None) == 0:  # All dimensions are named
+            # Log shapes for debugging
+            print(f"TimeDistributed input shape: {x.shape}")
+            print(f"Module weight shape: {self.module.weight.shape}")
+            
             # Flatten batch and time for module application
             x_reshape = x.align_to('batch', 'time', 'features').rename(None)
-            # Use reshape instead of view
             x_reshape = x_reshape.reshape(-1, x_reshape.size(-1))
+            print(f"Reshaped input shape: {x_reshape.shape}")
+            
             y = self.module(x_reshape)
             
             # Restore batch and time dimensions
