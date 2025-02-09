@@ -38,7 +38,7 @@ class BayesianLinear(nn.Module):
         return F.linear(x, weight, bias)
 
 class BayesianNetwork(nn.Module):
-    def __init__(self, input_dim, hidden_sizes=[1024, 512, 256]):  # Larger network
+    def __init__(self, input_dim, hidden_sizes=[1024, 512, 256]):
         super().__init__()
         
         self.hidden_layers = nn.ModuleList()
@@ -54,22 +54,56 @@ class BayesianNetwork(nn.Module):
         self.output_layer = BayesianLinear(hidden_sizes[-1], 1)
         
         # Increased dropout for better regularization
-        self.dropout = nn.Dropout(0.2)  # Increased from 0.1
+        self.dropout = nn.Dropout(0.2)
 
     def forward(self, x, sample=False):
         for layer in self.hidden_layers:
-            x = F.elu(layer(x, sample))  # Changed from ReLU to ELU
+            x = F.elu(layer(x, sample))
             x = self.dropout(x)
         return self.output_layer(x, sample)
 
 class GPUBayesianEnsemble:
-    def __init__(self, input_dim, n_models=10, device=None):
+    def __init__(self, input_dim, n_models=10, device=None, seq_length=30):
         self.device = device or torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.input_dim = input_dim
         self.n_models = n_models
         self.models = []
+        self.seq_length = seq_length
+        
+    def create_temporal_features(self, X):
+        """Create temporal features for the input data"""
+        batch_size = X.shape[0]
+        
+        # Create time index features
+        time_index = np.arange(batch_size).reshape(-1, 1) / batch_size  # Normalized time
+        
+        # Create seasonal features
+        day_sin = np.sin(2 * np.pi * time_index * 365)
+        day_cos = np.cos(2 * np.pi * time_index * 365)
+        week_sin = np.sin(2 * np.pi * time_index * 52)
+        week_cos = np.cos(2 * np.pi * time_index * 52)
+        
+        # Create lagged features
+        lagged_features = []
+        for lag in [1, 7, 14, 30]:  # Common time series lags
+            lagged = np.zeros((batch_size, 1))
+            lagged[lag:] = X[:-lag, -1:]  # Use last column (target) for lags
+            lagged_features.append(lagged)
+        
+        # Combine all temporal features
+        temporal_features = np.hstack([
+            time_index,
+            day_sin, day_cos,
+            week_sin, week_cos,
+            *lagged_features
+        ])
+        
+        return np.hstack([X, temporal_features])
         
     def train(self, X, y, epochs=1200, batch_size=128, num_samples=15):
+        # Add temporal features
+        X = self.create_temporal_features(X)
+        
         X = torch.FloatTensor(X).to(self.device)
         y = torch.FloatTensor(y).to(self.device)
         
@@ -80,15 +114,15 @@ class GPUBayesianEnsemble:
         loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
         
         for i in range(self.n_models):
-            model = BayesianNetwork(self.input_dim).to(self.device)
+            model = BayesianNetwork(self.input_dim + 9).to(self.device)  # +9 for temporal features
             optimizer = torch.optim.AdamW(
                 model.parameters(), 
-                lr=0.002,           # Increased from 0.001
+                lr=0.002,
                 weight_decay=0.01
             )
             scheduler = torch.optim.lr_scheduler.OneCycleLR(
                 optimizer, 
-                max_lr=0.02,        # Increased from 0.01
+                max_lr=0.02,
                 epochs=epochs,
                 steps_per_epoch=len(loader),
                 pct_start=0.3,
@@ -96,7 +130,7 @@ class GPUBayesianEnsemble:
             )
             
             best_loss = float('inf')
-            patience = 25           # Increased from 20
+            patience = 25
             patience_counter = 0
             
             for epoch in range(epochs):
@@ -133,15 +167,18 @@ class GPUBayesianEnsemble:
             
             self.models.append(model)
     
-    def predict(self, X, num_samples=100):
+    def predict(self, X):
+        # Add temporal features for prediction
+        X = self.create_temporal_features(X)
         X = torch.FloatTensor(X).to(self.device)
+        
         predictions = []
         
         for model in self.models:
             model.eval()
             model_preds = []
             with torch.no_grad():
-                for _ in range(num_samples):
+                for _ in range(100):  # More samples for prediction
                     pred = model(X, sample=True)
                     model_preds.append(pred.cpu().numpy())
             predictions.append(np.mean(model_preds, axis=0))

@@ -89,6 +89,9 @@ class TemporalFusionTransformer(nn.Module):
             dropout
         )
         
+        # Position encoding
+        self.position_encoding = nn.Parameter(torch.randn(1, 1000, hidden_size))  # Max sequence length of 1000
+        
         # Multi-head self-attention layers
         self.attention_layers = nn.ModuleList([
             nn.MultiheadAttention(hidden_size, num_heads, dropout=dropout, batch_first=True)
@@ -125,6 +128,10 @@ class TemporalFusionTransformer(nn.Module):
         # Initial processing
         x = self.input_layer(x)
         
+        # Add positional encoding
+        seq_len = x.size(1)
+        x = x + self.position_encoding[:, :seq_len, :]
+        
         # Feature processing
         x = self.feature_grn(x)
         
@@ -141,39 +148,53 @@ class TemporalFusionTransformer(nn.Module):
         x = self.pre_output_grn(x)
         return self.output_layer(x)
 
+def create_sequences(X, y, seq_length=30):
+    """Create sequences for temporal modeling"""
+    Xs, ys = [], []
+    for i in range(len(X) - seq_length):
+        Xs.append(X[i:(i + seq_length)])
+        ys.append(y[i + seq_length])
+    return np.array(Xs), np.array(ys)
+
 class TFTModel:
-    def __init__(self, num_features, hidden_size=512, device='cuda'):
+    def __init__(self, num_features, hidden_size=512, seq_length=30, device='cuda'):
         self.device = torch.device(device if torch.cuda.is_available() else 'cpu')
+        self.seq_length = seq_length
         self.model = TemporalFusionTransformer(
             num_features=num_features,
             hidden_size=hidden_size
         ).to(self.device)
         
     def train(self, X, y, epochs=400, batch_size=64):
-        if len(X.shape) == 2:
-            X = X.reshape(X.shape[0], 1, X.shape[1])
-            
-        X = torch.FloatTensor(X).to(self.device)
-        y = torch.FloatTensor(y).to(self.device)
+        # Create sequences for temporal modeling
+        X_seq, y_seq = create_sequences(X, y, self.seq_length)
+        
+        X = torch.FloatTensor(X_seq).to(self.device)
+        y = torch.FloatTensor(y_seq).to(self.device)
         
         if len(y.shape) == 1:
-            y = y.view(-1, 1, 1)
-        elif len(y.shape) == 2:
             y = y.unsqueeze(-1)
             
-        optimizer = torch.optim.AdamW(self.model.parameters(), lr=0.001, weight_decay=0.01)
+        optimizer = torch.optim.AdamW(
+            self.model.parameters(), 
+            lr=0.001, 
+            weight_decay=0.01
+        )
+        
         scheduler = OneCycleLR(
             optimizer,
             max_lr=0.01,
             epochs=epochs,
-            steps_per_epoch=len(X) // batch_size + 1,
+            steps_per_epoch=max(1, len(X) // batch_size),
             pct_start=0.3,
             anneal_strategy='cos'
         )
         
         dataset = torch.utils.data.TensorDataset(X, y)
         loader = torch.utils.data.DataLoader(
-            dataset, batch_size=batch_size, shuffle=True
+            dataset, 
+            batch_size=batch_size, 
+            shuffle=True
         )
         
         best_loss = float('inf')
@@ -187,7 +208,9 @@ class TFTModel:
             for batch_X, batch_y in loader:
                 optimizer.zero_grad()
                 outputs = self.model(batch_X)
-                loss = peak_weighted_loss(outputs, batch_y)
+                # Take the last prediction for each sequence
+                predictions = outputs[:, -1, :]
+                loss = peak_weighted_loss(predictions, batch_y)
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
                 optimizer.step()
@@ -208,13 +231,22 @@ class TFTModel:
                 print(f"Epoch {epoch+1}/{epochs}, Loss: {epoch_loss:.4f}")
     
     def predict(self, X):
-        if len(X.shape) == 2:
-            X = X.reshape(X.shape[0], 1, X.shape[1])
-            
-        X = torch.FloatTensor(X).to(self.device)
+        # Create sequences for prediction
+        X_seq = []
+        for i in range(len(X) - self.seq_length + 1):
+            X_seq.append(X[i:(i + self.seq_length)])
+        X_seq = np.array(X_seq)
+        
+        X = torch.FloatTensor(X_seq).to(self.device)
         self.model.eval()
         
         with torch.no_grad():
             predictions = self.model(X)
+            # Take the last prediction for each sequence
+            predictions = predictions[:, -1, 0]
             
-        return predictions.squeeze(-1).cpu().numpy()
+        # For the first seq_length-1 points, use the first prediction
+        pad_predictions = np.full(self.seq_length - 1, predictions[0])
+        final_predictions = np.concatenate([pad_predictions, predictions.cpu().numpy()])
+            
+        return final_predictions
