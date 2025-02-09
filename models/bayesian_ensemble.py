@@ -38,7 +38,7 @@ class BayesianLinear(nn.Module):
         return F.linear(x, weight, bias)
 
 class BayesianNetwork(nn.Module):
-    def __init__(self, input_dim, hidden_sizes=[1024, 512, 256]):
+    def __init__(self, input_dim, hidden_sizes=[256, 128, 64]):
         super().__init__()
         
         self.hidden_layers = nn.ModuleList()
@@ -54,7 +54,7 @@ class BayesianNetwork(nn.Module):
         self.output_layer = BayesianLinear(hidden_sizes[-1], 1)
         
         # Dropout for regularization
-        self.dropout = nn.Dropout(0.2)
+        self.dropout = nn.Dropout(0.1)
 
     def forward(self, x, sample=False):
         for layer in self.hidden_layers:
@@ -66,9 +66,9 @@ class GPUBayesianEnsemble:
     def __init__(
         self,
         input_dim,
-        n_models=10,
+        n_models=5,
         device=None,
-        batch_size=512
+        batch_size=32
     ):
         self.device = device or torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.input_dim = input_dim
@@ -102,12 +102,16 @@ class GPUBayesianEnsemble:
             *lagged_features
         ])
         
+        # Combine with original features
         return np.hstack([X, temporal_features])
-        
-    def train(self, X, y, epochs=1200, num_samples=15):
+    
+    def train(self, X, y, epochs=800, num_samples=10):
         """Train the ensemble of Bayesian neural networks"""
         # Add temporal features
         X = self.create_temporal_features(X)
+        
+        # Calculate actual input dimension after adding features
+        actual_input_dim = X.shape[1]
         
         # Keep data on CPU initially
         X = torch.FloatTensor(X)
@@ -121,19 +125,20 @@ class GPUBayesianEnsemble:
             dataset, 
             batch_size=self.batch_size, 
             shuffle=True,
-            pin_memory=False  # Disable pin_memory
+            pin_memory=False
         )
         
         for i in range(self.n_models):
-            model = BayesianNetwork(self.input_dim + 9).to(self.device)  # +9 for temporal features
+            model = BayesianNetwork(actual_input_dim).to(self.device)
             optimizer = torch.optim.AdamW(
                 model.parameters(), 
-                lr=0.002,
+                lr=0.001,
                 weight_decay=0.01
             )
+            
             scheduler = torch.optim.lr_scheduler.OneCycleLR(
                 optimizer, 
-                max_lr=0.02,
+                max_lr=0.01,
                 epochs=epochs,
                 steps_per_epoch=len(loader),
                 pct_start=0.3,
@@ -149,12 +154,12 @@ class GPUBayesianEnsemble:
                 model.train()
                 
                 for batch_X, batch_y in loader:
-                    # Move to GPU here
                     batch_X = batch_X.to(self.device)
                     batch_y = batch_y.to(self.device)
                     
                     optimizer.zero_grad()
                     
+                    # Multiple forward passes for MC Dropout
                     predictions = torch.stack([model(batch_X, sample=True) for _ in range(num_samples)])
                     pred_mean = predictions.mean(0)
                     
@@ -181,6 +186,8 @@ class GPUBayesianEnsemble:
                     print(f"Model {i+1}/{self.n_models}, Epoch {epoch+1}/{epochs}, Loss: {epoch_loss:.4f}")
             
             self.models.append(model)
+            # Clear some memory
+            torch.cuda.empty_cache()
     
     def predict(self, X):
         """Generate predictions with uncertainty estimates"""
@@ -201,13 +208,15 @@ class GPUBayesianEnsemble:
                     batch_X = X[i:i + self.batch_size].to(self.device)
                     batch_preds = []
                     
-                    for _ in range(100):  # More samples for prediction
+                    for _ in range(50):  # MC Dropout samples
                         pred = model(batch_X, sample=True)
                         batch_preds.append(pred.cpu().numpy())
                     
                     model_preds.extend(np.mean(batch_preds, axis=0))
             
             predictions.append(np.array(model_preds))
+            # Clear some memory
+            torch.cuda.empty_cache()
         
         predictions = np.stack(predictions)
         mean_pred = np.mean(predictions, axis=0).flatten()

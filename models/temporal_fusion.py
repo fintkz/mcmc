@@ -6,23 +6,20 @@ import numpy as np
 from utils import peak_weighted_loss
 
 class TimeDistributed(nn.Module):
-    def __init__(self, module, batch_first=True):
+    def __init__(self, module):
         super().__init__()
         self.module = module
-        self.batch_first = batch_first
 
     def forward(self, x):
         if len(x.size()) <= 2:
             return self.module(x)
         
-        x_reshaped = x.contiguous().view(-1, x.size(-1))
-        y = self.module(x_reshaped)
+        # Squash samples and timesteps into a single axis
+        x_reshape = x.contiguous().view(-1, x.size(-1))
+        y = self.module(x_reshape)
         
-        if self.batch_first:
-            y = y.contiguous().view(x.size(0), -1, y.size(-1))
-        else:
-            y = y.view(-1, x.size(1), y.size(-1))
-        return y
+        # Reshape back
+        return y.contiguous().view(x.size(0), x.size(1), y.size(-1))
 
 class GatedResidualNetwork(nn.Module):
     def __init__(self, input_size, hidden_size, output_size, dropout=0.1):
@@ -59,7 +56,8 @@ class GatedResidualNetwork(nn.Module):
             x = self.skip(x)
         
         # Gating mechanism
-        gate = torch.sigmoid(self.gate(torch.cat([x, h], dim=-1)))
+        combined = torch.cat([x, h], dim=-1)
+        gate = torch.sigmoid(self.gate(combined))
         output = gate * h + (1 - gate) * x
         
         # Layer normalization
@@ -68,14 +66,17 @@ class GatedResidualNetwork(nn.Module):
         return output
 
 class TemporalFusionTransformer(nn.Module):
-    def __init__(self, num_features, hidden_size=512, num_heads=8, dropout=0.1):
+    def __init__(self, num_features, hidden_size=64, num_heads=4, dropout=0.1):
         super().__init__()
         self.num_features = num_features
         self.hidden_size = hidden_size
         
+        # Project input to hidden size first
+        self.input_projection = TimeDistributed(nn.Linear(num_features, hidden_size))
+        
         # Feature processing
         self.feature_grn = GatedResidualNetwork(
-            input_size=num_features,
+            input_size=hidden_size,
             hidden_size=hidden_size,
             output_size=hidden_size,
             dropout=dropout
@@ -101,11 +102,14 @@ class TemporalFusionTransformer(nn.Module):
         self.final_grn = GatedResidualNetwork(
             input_size=hidden_size,
             hidden_size=hidden_size,
-            output_size=1,  # Single output value
+            output_size=1,
             dropout=dropout
         )
     
     def forward(self, x):
+        # Project input
+        x = self.input_projection(x)
+        
         # Feature processing
         processed_features = self.feature_grn(x)
         
@@ -123,24 +127,16 @@ class TemporalFusionTransformer(nn.Module):
         output = self.final_grn(attended_features)
         
         return output
-    
-def create_sequences(X, y, seq_length):
-    """Create sequences for temporal modeling"""
-    Xs, ys = [], []
-    for i in range(len(X) - seq_length + 1):
-        Xs.append(X[i:(i + seq_length)])
-        ys.append(y[i + seq_length - 1])
-    return np.array(Xs), np.array(ys)
 
 class TFTModel:
     def __init__(
         self,
         num_features,
         seq_length=30,
-        hidden_size=64,  # Reduced from 512
-        num_heads=4,     # Reduced from 8
+        hidden_size=64,
+        num_heads=4,
         dropout=0.1,
-        batch_size=512,
+        batch_size=32,
         device=None
     ):
         self.num_features = num_features
@@ -156,20 +152,28 @@ class TFTModel:
             dropout=dropout
         ).to(self.device)
     
-    def train(self, X, y, epochs=400):
-        """Train the model"""
-        # Create sequences for temporal modeling
+    def create_sequences(self, X, y=None):
+        """Create sequences for temporal modeling"""
         X_seq = []
         y_seq = []
         
         for i in range(len(X) - self.seq_length + 1):
             X_seq.append(X[i:(i + self.seq_length)])
-            y_seq.append(y[i + self.seq_length - 1])
-            
-        X_seq = np.array(X_seq)
-        y_seq = np.array(y_seq)
+            if y is not None:
+                y_seq.append(y[i + self.seq_length - 1])
         
-        # Keep data on CPU initially
+        X_seq = np.array(X_seq)
+        if y is not None:
+            y_seq = np.array(y_seq)
+            return X_seq, y_seq
+        return X_seq
+    
+    def train(self, X, y, epochs=400):
+        """Train the model"""
+        # Create sequences
+        X_seq, y_seq = self.create_sequences(X, y)
+        
+        # Convert to tensors (keep on CPU initially)
         X = torch.FloatTensor(X_seq)
         y = torch.FloatTensor(y_seq)
         
@@ -208,6 +212,7 @@ class TFTModel:
             self.model.train()
             
             for batch_X, batch_y in loader:
+                # Move to device
                 batch_X = batch_X.to(self.device)
                 batch_y = batch_y.to(self.device)
                 
@@ -239,22 +244,19 @@ class TFTModel:
     
     def predict(self, X):
         """Generate predictions"""
-        # Create sequences for prediction
-        X_seq = []
-        for i in range(len(X) - self.seq_length + 1):
-            X_seq.append(X[i:(i + self.seq_length)])
-        X_seq = np.array(X_seq)
+        # Create sequences
+        X_seq = self.create_sequences(X)
         
-        # Keep data on CPU initially
+        # Convert to tensor (keep on CPU initially)
         X = torch.FloatTensor(X_seq)
         self.model.eval()
         
         with torch.no_grad():
-            # Process in batches
             predictions = []
+            # Process in batches
             for i in range(0, len(X), self.batch_size):
                 batch_X = X[i:i + self.batch_size].to(self.device)
-                batch_preds = self.model(batch_X)[:, -1, 0]  # Take last timestep
+                batch_preds = self.model(batch_X)[:, -1, 0]
                 predictions.extend(batch_preds.cpu().numpy())
             
         # For the first seq_length-1 points, use the first prediction

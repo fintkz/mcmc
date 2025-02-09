@@ -3,8 +3,6 @@ import pandas as pd
 import json
 from itertools import combinations
 from pathlib import Path
-import torch.multiprocessing as mp
-from functools import partial
 import torch
 from data import SyntheticDataGenerator
 from models.prophet_model import ProphetModel
@@ -70,7 +68,7 @@ def process_gpu_task(task):
     """Process a single GPU task"""
     combo, gpu_id, features, temporal_features, df, logger = task
     try:
-        # Set GPU device
+        device = f'cuda:{gpu_id}'
         torch.cuda.set_device(gpu_id)
         
         combo_name = '_'.join(combo) if combo else 'baseline'
@@ -83,10 +81,9 @@ def process_gpu_task(task):
             df_subset[feature] = 0
         
         # Prepare feature matrix with temporal features
-        X = np.hstack([
-            df_subset[list(features)].values,
-            df_subset[temporal_features].values
-        ])
+        feature_matrix = df_subset[list(features)].values
+        temporal_matrix = df_subset[temporal_features].values
+        X = np.hstack([feature_matrix, temporal_matrix])
         y = df_subset['y'].values
         
         # Prophet
@@ -102,32 +99,39 @@ def process_gpu_task(task):
         prophet_model.fit(prophet_df)
         prophet_forecast = prophet_model.predict(prophet_df)
         
-        # TFT with single-process data loading
+        # TFT
         logger.info(f"Training TFT for {combo_name}")
         tft_model = TFTModel(
             num_features=X.shape[1],
             seq_length=30,
-            batch_size=512,  # Increased batch size
-            device=f'cuda:{gpu_id}'
+            batch_size=32,
+            device=device
         )
         tft_model.train(X, y)
         tft_preds = tft_model.predict(X)
         
-        # Bayesian with single-process data loading
+        # Clear CUDA cache after TFT
+        torch.cuda.empty_cache()
+        
+        # Bayesian
         logger.info(f"Training Bayesian for {combo_name}")
         bayesian_model = GPUBayesianEnsemble(
             input_dim=X.shape[1],
-            device=f'cuda:{gpu_id}',
-            batch_size=512  # Increased batch size
+            device=device,
+            batch_size=32
         )
         bayesian_model.train(X, y)
         bayesian_mean, bayesian_std = bayesian_model.predict(X)
         
+        # Clear CUDA cache after Bayesian
+        torch.cuda.empty_cache()
+        
         # Store results
         result = {
-            'features': list(combo),
             'prophet': {
                 'yhat': prophet_forecast['yhat'].tolist(),
+                'yhat_lower': prophet_forecast['yhat_lower'].tolist(),
+                'yhat_upper': prophet_forecast['yhat_upper'].tolist(),
                 'metrics': evaluate_predictions(y, prophet_forecast['yhat'])
             },
             'tft': {
@@ -151,6 +155,7 @@ def process_gpu_task(task):
         
     except Exception as e:
         logger.error(f"Error processing combination {combo_name} on GPU {gpu_id}: {str(e)}")
+        torch.cuda.empty_cache()  # Clear CUDA cache on error
         raise
 
 def train_and_evaluate_all_models(df, feature_dates, logger):
@@ -174,10 +179,6 @@ def train_and_evaluate_all_models(df, feature_dates, logger):
     num_gpus = torch.cuda.device_count()
     logger.info(f"Training using {num_gpus} GPUs")
     
-    # Initialize multiprocessing with 'spawn' method
-    if mp.get_start_method(allow_none=True) != 'spawn':
-        mp.set_start_method('spawn', force=True)
-    
     # Prepare tasks
     tasks = []
     for i, combo in enumerate(combinations):
@@ -195,6 +196,8 @@ def train_and_evaluate_all_models(df, feature_dates, logger):
     for task in tasks:
         combo_name, result = process_gpu_task(task)
         results['predictions'][combo_name] = result
+        # Clear CUDA cache after each task
+        torch.cuda.empty_cache()
     
     return results
 
@@ -233,6 +236,8 @@ def main():
         
     except Exception as e:
         logger.error(f"An error occurred: {str(e)}", exc_info=True)
+        # Clear CUDA cache on error
+        torch.cuda.empty_cache()
         raise
     
 if __name__ == "__main__":
