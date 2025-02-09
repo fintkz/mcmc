@@ -88,10 +88,6 @@ def train_combination(combo, gpu_id, features, temporal_features, df, logger):
         ])
         y = df_subset['y'].values
         
-        # Increase batch sizes and parallel workers for better GPU utilization
-        batch_size = 256  # Increased from 128
-        num_workers = 4   # Added parallel data loading
-        
         # Prophet
         logger.info(f"Training Prophet for {combo_name}")
         prophet_model = ProphetModel()
@@ -105,25 +101,25 @@ def train_combination(combo, gpu_id, features, temporal_features, df, logger):
         prophet_model.fit(prophet_df)
         prophet_forecast = prophet_model.predict(prophet_df)
         
-        # TFT with increased batch size and workers
+        # TFT
         logger.info(f"Training TFT for {combo_name}")
         tft_model = TFTModel(
             num_features=X.shape[1],
             seq_length=30,
-            batch_size=batch_size,
-            num_workers=num_workers,
+            batch_size=256,
+            num_workers=4,
             device=f'cuda:{gpu_id}'
         )
         tft_model.train(X, y)
         tft_preds = tft_model.predict(X)
         
-        # Bayesian with increased batch size and workers
+        # Bayesian
         logger.info(f"Training Bayesian for {combo_name}")
         bayesian_model = GPUBayesianEnsemble(
             input_dim=X.shape[1],
             device=f'cuda:{gpu_id}',
-            batch_size=batch_size,
-            num_workers=num_workers
+            batch_size=256,
+            num_workers=4
         )
         bayesian_model.train(X, y)
         bayesian_mean, bayesian_std = bayesian_model.predict(X)

@@ -66,106 +66,80 @@ class GatedResidualNetwork(nn.Module):
         return self.layernorm(output)
 
 class TemporalFusionTransformer(nn.Module):
-    def __init__(
-        self,
-        num_features,
-        hidden_size=512,
-        num_heads=8,
-        num_encoder_layers=4,
-        dropout=0.1
-    ):
+    def __init__(self, num_features, hidden_size=512, num_heads=8, dropout=0.1):
         super().__init__()
         self.hidden_size = hidden_size
         self.num_features = num_features
         
-        # Initial processing
-        self.input_layer = TimeDistributed(nn.Linear(num_features, hidden_size))
-        
-        # Feature processing
+        # Variable selection networks
         self.feature_grn = GatedResidualNetwork(
+            num_features,
             hidden_size,
-            hidden_size * 2,
-            hidden_size,
-            dropout
-        )
-        
-        # Position encoding
-        self.position_encoding = nn.Parameter(torch.randn(1, 1000, hidden_size))  # Max sequence length of 1000
-        
-        # Multi-head self-attention layers
-        self.attention_layers = nn.ModuleList([
-            nn.MultiheadAttention(hidden_size, num_heads, dropout=dropout, batch_first=True)
-            for _ in range(num_encoder_layers)
-        ])
-        
-        # Layer normalization and skip connections
-        self.layer_norms = nn.ModuleList([
-            nn.LayerNorm(hidden_size)
-            for _ in range(num_encoder_layers)
-        ])
-        
-        # Feed-forward layers after attention
-        self.ff_layers = nn.ModuleList([
-            GatedResidualNetwork(
-                hidden_size,
-                hidden_size * 2,
-                hidden_size,
-                dropout
-            )
-            for _ in range(num_encoder_layers)
-        ])
-        
-        # Output processing
-        self.pre_output_grn = GatedResidualNetwork(
-            hidden_size,
-            hidden_size * 2,
             hidden_size,
             dropout
         )
-        self.output_layer = TimeDistributed(nn.Linear(hidden_size, 1))
+        
+        # Temporal processing
+        self.temporal_encoder = nn.TransformerEncoder(
+            nn.TransformerEncoderLayer(
+                d_model=hidden_size,
+                nhead=num_heads,
+                dim_feedforward=4*hidden_size,
+                dropout=dropout,
+                batch_first=True
+            ),
+            num_layers=3
+        )
+        
+        # Output layer
+        self.output_layer = nn.Linear(hidden_size, 1)
         
     def forward(self, x):
-        # Initial processing
-        x = self.input_layer(x)
-        
-        # Add positional encoding
-        seq_len = x.size(1)
-        x = x + self.position_encoding[:, :seq_len, :]
-        
         # Feature processing
-        x = self.feature_grn(x)
+        processed_features = self.feature_grn(x)
         
-        # Self-attention blocks with skip connections and feed-forward
-        for attention, norm, ff_layer in zip(self.attention_layers, self.layer_norms, self.ff_layers):
-            # Multi-head attention
-            attended, _ = attention(x, x, x)
-            x = norm(x + attended)
-            
-            # Feed-forward with residual
-            x = x + ff_layer(x)
+        # Temporal processing
+        temporal_features = self.temporal_encoder(processed_features)
         
-        # Output processing
-        x = self.pre_output_grn(x)
-        return self.output_layer(x)
+        # Output
+        return self.output_layer(temporal_features)
 
-def create_sequences(X, y, seq_length=30):
+def create_sequences(X, y, seq_length):
     """Create sequences for temporal modeling"""
     Xs, ys = [], []
-    for i in range(len(X) - seq_length):
+    for i in range(len(X) - seq_length + 1):
         Xs.append(X[i:(i + seq_length)])
-        ys.append(y[i + seq_length])
+        ys.append(y[i + seq_length - 1])
     return np.array(Xs), np.array(ys)
 
 class TFTModel:
-    def __init__(self, num_features, hidden_size=512, seq_length=30, device='cuda'):
-        self.device = torch.device(device if torch.cuda.is_available() else 'cpu')
+    def __init__(
+        self,
+        num_features,
+        seq_length=30,
+        hidden_size=512,
+        num_heads=8,
+        dropout=0.1,
+        batch_size=256,
+        num_workers=4,
+        device=None
+    ):
+        self.num_features = num_features
         self.seq_length = seq_length
+        self.hidden_size = hidden_size
+        self.batch_size = batch_size
+        self.num_workers = num_workers
+        self.device = device or torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        
         self.model = TemporalFusionTransformer(
             num_features=num_features,
-            hidden_size=hidden_size
+            hidden_size=hidden_size,
+            num_heads=num_heads,
+            dropout=dropout
         ).to(self.device)
         
-    def train(self, X, y, epochs=400, batch_size=64):
+    def train(self, X, y, epochs=400):
+        """Train the model"""
         # Create sequences for temporal modeling
         X_seq, y_seq = create_sequences(X, y, self.seq_length)
         
@@ -185,16 +159,19 @@ class TFTModel:
             optimizer,
             max_lr=0.01,
             epochs=epochs,
-            steps_per_epoch=max(1, len(X) // batch_size),
+            steps_per_epoch=max(1, len(X) // self.batch_size),
             pct_start=0.3,
             anneal_strategy='cos'
         )
         
+        # Create DataLoader with specified batch size and workers
         dataset = torch.utils.data.TensorDataset(X, y)
         loader = torch.utils.data.DataLoader(
             dataset, 
-            batch_size=batch_size, 
-            shuffle=True
+            batch_size=self.batch_size,
+            shuffle=True,
+            num_workers=self.num_workers,
+            pin_memory=True  # This helps with GPU transfer
         )
         
         best_loss = float('inf')
@@ -206,9 +183,12 @@ class TFTModel:
             self.model.train()
             
             for batch_X, batch_y in loader:
+                # Move batch to device
+                batch_X = batch_X.to(self.device, non_blocking=True)
+                batch_y = batch_y.to(self.device, non_blocking=True)
+                
                 optimizer.zero_grad()
                 outputs = self.model(batch_X)
-                # Take the last prediction for each sequence
                 predictions = outputs[:, -1, :]
                 loss = peak_weighted_loss(predictions, batch_y)
                 loss.backward()
@@ -231,6 +211,7 @@ class TFTModel:
                 print(f"Epoch {epoch+1}/{epochs}, Loss: {epoch_loss:.4f}")
     
     def predict(self, X):
+        """Generate predictions"""
         # Create sequences for prediction
         X_seq = []
         for i in range(len(X) - self.seq_length + 1):
@@ -246,7 +227,7 @@ class TFTModel:
             predictions = predictions[:, -1, 0]
             
         # For the first seq_length-1 points, use the first prediction
-        pad_predictions = np.full(self.seq_length - 1, predictions[0])
+        pad_predictions = np.full(self.seq_length - 1, predictions[0].item())
         final_predictions = np.concatenate([pad_predictions, predictions.cpu().numpy()])
             
         return final_predictions

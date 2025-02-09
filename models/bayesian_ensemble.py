@@ -63,12 +63,20 @@ class BayesianNetwork(nn.Module):
         return self.output_layer(x, sample)
 
 class GPUBayesianEnsemble:
-    def __init__(self, input_dim, n_models=10, device=None, seq_length=30):
+    def __init__(
+        self,
+        input_dim,
+        n_models=10,
+        device=None,
+        batch_size=256,
+        num_workers=4
+    ):
         self.device = device or torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.input_dim = input_dim
         self.n_models = n_models
         self.models = []
-        self.seq_length = seq_length
+        self.batch_size = batch_size
+        self.num_workers = num_workers
         
     def create_temporal_features(self, X):
         """Create temporal features for the input data"""
@@ -89,18 +97,17 @@ class GPUBayesianEnsemble:
             lagged = np.zeros((batch_size, 1))
             lagged[lag:] = X[:-lag, -1:]  # Use last column (target) for lags
             lagged_features.append(lagged)
-        
+            
         # Combine all temporal features
         temporal_features = np.hstack([
-            time_index,
-            day_sin, day_cos,
-            week_sin, week_cos,
+            time_index, day_sin, day_cos, week_sin, week_cos,
             *lagged_features
         ])
         
         return np.hstack([X, temporal_features])
         
-    def train(self, X, y, epochs=1200, batch_size=128, num_samples=15):
+    def train(self, X, y, epochs=1200, num_samples=15):
+        """Train the ensemble of Bayesian neural networks"""
         # Add temporal features
         X = self.create_temporal_features(X)
         
@@ -111,7 +118,13 @@ class GPUBayesianEnsemble:
             y = y.view(-1, 1)
         
         dataset = TensorDataset(X, y)
-        loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+        loader = DataLoader(
+            dataset, 
+            batch_size=self.batch_size, 
+            shuffle=True,
+            num_workers=self.num_workers,
+            pin_memory=True
+        )
         
         for i in range(self.n_models):
             model = BayesianNetwork(self.input_dim + 9).to(self.device)  # +9 for temporal features
@@ -138,6 +151,9 @@ class GPUBayesianEnsemble:
                 model.train()
                 
                 for batch_X, batch_y in loader:
+                    batch_X = batch_X.to(self.device, non_blocking=True)
+                    batch_y = batch_y.to(self.device, non_blocking=True)
+                    
                     optimizer.zero_grad()
                     
                     predictions = torch.stack([model(batch_X, sample=True) for _ in range(num_samples)])
@@ -168,6 +184,7 @@ class GPUBayesianEnsemble:
             self.models.append(model)
     
     def predict(self, X):
+        """Generate predictions with uncertainty estimates"""
         # Add temporal features for prediction
         X = self.create_temporal_features(X)
         X = torch.FloatTensor(X).to(self.device)
