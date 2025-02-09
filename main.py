@@ -66,8 +66,9 @@ def prepare_feature_combinations(df, features):
         all_combinations.extend(combinations(features, r))
     return list(all_combinations)
 
-def train_combination(combo, gpu_id, features, temporal_features, df, logger):
-    """Train models for a specific feature combination"""
+def process_gpu_task(task):
+    """Process a single GPU task"""
+    combo, gpu_id, features, temporal_features, df, logger = task
     try:
         # Set GPU device
         torch.cuda.set_device(gpu_id)
@@ -101,25 +102,23 @@ def train_combination(combo, gpu_id, features, temporal_features, df, logger):
         prophet_model.fit(prophet_df)
         prophet_forecast = prophet_model.predict(prophet_df)
         
-        # TFT
+        # TFT with single-process data loading
         logger.info(f"Training TFT for {combo_name}")
         tft_model = TFTModel(
             num_features=X.shape[1],
             seq_length=30,
-            batch_size=256,
-            num_workers=4,
+            batch_size=512,  # Increased batch size
             device=f'cuda:{gpu_id}'
         )
         tft_model.train(X, y)
         tft_preds = tft_model.predict(X)
         
-        # Bayesian
+        # Bayesian with single-process data loading
         logger.info(f"Training Bayesian for {combo_name}")
         bayesian_model = GPUBayesianEnsemble(
             input_dim=X.shape[1],
             device=f'cuda:{gpu_id}',
-            batch_size=256,
-            num_workers=4
+            batch_size=512  # Increased batch size
         )
         bayesian_model.train(X, y)
         bayesian_mean, bayesian_std = bayesian_model.predict(X)
@@ -175,32 +174,27 @@ def train_and_evaluate_all_models(df, feature_dates, logger):
     num_gpus = torch.cuda.device_count()
     logger.info(f"Training using {num_gpus} GPUs")
     
-    # Initialize multiprocessing
-    mp.set_start_method('spawn', force=True)
+    # Initialize multiprocessing with 'spawn' method
+    if mp.get_start_method(allow_none=True) != 'spawn':
+        mp.set_start_method('spawn', force=True)
     
-    # Create partial function with fixed arguments
-    train_func = partial(
-        train_combination,
-        features=features,
-        temporal_features=temporal_features,
-        df=df,
-        logger=logger
-    )
+    # Prepare tasks
+    tasks = []
+    for i, combo in enumerate(combinations):
+        gpu_id = i % num_gpus
+        tasks.append((combo, gpu_id, features, temporal_features, df, logger))
     
-    # Distribute combinations across GPUs
-    results = {'feature_dates': feature_dates, 'actual': df['y'].tolist(), 'predictions': {}}
+    # Initialize results
+    results = {
+        'feature_dates': feature_dates,
+        'actual': df['y'].tolist(),
+        'predictions': {}
+    }
     
-    # Create process pool
-    with mp.Pool(num_gpus) as pool:
-        # Create arguments list with only combo and gpu_id
-        args = [(combo, i % num_gpus) for i, combo in enumerate(combinations)]
-        
-        # Map combinations to processes using only combo and gpu_id
-        combo_results = pool.starmap(train_func, args)
-        
-        # Collect results
-        for combo_name, result in combo_results:
-            results['predictions'][combo_name] = result
+    # Process tasks sequentially for each GPU
+    for task in tasks:
+        combo_name, result = process_gpu_task(task)
+        results['predictions'][combo_name] = result
     
     return results
 
