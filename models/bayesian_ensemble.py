@@ -7,60 +7,42 @@ from utils import peak_weighted_loss
 
 
 class BayesianLinear(nn.Module):
-    def __init__(self, in_features: int, out_features: int, prior_std: float = 1.0):
+    def __init__(self, in_features: int, out_features: int):
         super().__init__()
         self.in_features = in_features
         self.out_features = out_features
-
-        # Weight parameters with named dimensions
-        weight_mu = torch.zeros(out_features, in_features)
-        weight_mu = weight_mu.refine_names('out_features', 'in_features')
-        self.weight_mu = nn.Parameter(weight_mu)
-
-        weight_rho = torch.zeros(out_features, in_features)
-        weight_rho = weight_rho.refine_names('out_features', 'in_features')
-        self.weight_rho = nn.Parameter(weight_rho)
-
-        # Bias parameters with named dimensions
-        bias_mu = torch.zeros(out_features)
-        bias_mu = bias_mu.refine_names('out_features')
-        self.bias_mu = nn.Parameter(bias_mu)
-
-        bias_rho = torch.zeros(out_features)
-        bias_rho = bias_rho.refine_names('out_features')
-        self.bias_rho = nn.Parameter(bias_rho)
-
-        # Initialize parameters
-        self.weight_mu.data.normal_(0, 0.05)
-        self.bias_mu.data.normal_(0, 0.05)
-        self.weight_rho.data.fill_(-3)
-        self.bias_rho.data.fill_(-3)
-
-        self.prior_std = prior_std
-
-    def forward(self, x: torch.Tensor, sample: bool = False) -> torch.Tensor:
-        # Ensure input has proper names
-        x = x.refine_names('batch', 'features')
         
-        # Validate input dimension
-        if x.size('features') != self.in_features:
-            raise ValueError(f"Expected {self.in_features} input features, got {x.size('features')}")
-
+        # Weight parameters
+        self.weight_mu = nn.Parameter(torch.zeros(out_features, in_features))
+        self.weight_rho = nn.Parameter(torch.zeros(out_features, in_features))
+        
+        # Bias parameters
+        self.bias_mu = nn.Parameter(torch.zeros(out_features))
+        self.bias_rho = nn.Parameter(torch.zeros(out_features))
+        
+        # Initialize parameters
+        self.reset_parameters()
+        
+    def reset_parameters(self):
+        """Initialize parameters following the way proposed in the paper."""
+        nn.init.kaiming_normal_(self.weight_mu, mode='fan_in', nonlinearity='relu')
+        nn.init.constant_(self.weight_rho, -3)
+        nn.init.constant_(self.bias_mu, 0.0)
+        nn.init.constant_(self.bias_rho, -3)
+        
+    def forward(self, x: torch.Tensor, sample: bool = False) -> torch.Tensor:
+        """Forward pass with reparameterization trick"""
+        x = x.rename(None)  # Remove names for operations
+        
         if sample:
-            weight = (self.weight_mu + 
-                     torch.log1p(torch.exp(self.weight_rho)) * 
-                     torch.randn_like(self.weight_mu))
-            bias = (self.bias_mu + 
-                   torch.log1p(torch.exp(self.bias_rho)) * 
-                   torch.randn_like(self.bias_mu))
+            weight = self.weight_mu + torch.randn_like(self.weight_mu) * torch.exp(self.weight_rho)
+            bias = self.bias_mu + torch.randn_like(self.bias_mu) * torch.exp(self.bias_rho)
         else:
             weight = self.weight_mu
             bias = self.bias_mu
-
-        # Matrix multiplication requires unnamed tensors
-        output = torch.matmul(x.rename(None), weight.rename(None).t()) + bias.rename(None)
-        # Restore names
-        return output.refine_names('batch', 'out_features')
+            
+        out = F.linear(x, weight, bias)
+        return out.refine_names('batch', 'features')
 
 
 class BayesianNetwork(nn.Module):
@@ -85,19 +67,25 @@ class BayesianNetwork(nn.Module):
         self.dropout = nn.Dropout(0.1)
 
     def forward(self, x: torch.Tensor, sample: bool = False) -> torch.Tensor:
-        # Ensure input has proper names
-        x = x.refine_names('batch', 'features')
+        """Forward pass with proper tensor name handling"""
+        # Remove names for operations
+        x = x.rename(None)
         
         # Validate input dimension
-        if x.size('features') != self.input_dim:
-            raise ValueError(f"Expected {self.input_dim} input features, got {x.size('features')}")
+        if x.size(-1) != self.input_dim:
+            raise ValueError(f"Expected {self.input_dim} input features, got {x.size(-1)}")
 
+        # Hidden layers
         for layer in self.hidden_layers:
-            x = F.elu(layer(x, sample))
-            x = self.dropout(x.rename(None)).refine_names('batch', 'features')
+            x = layer(x, sample)
+            x = F.elu(x)  # ELU on unnamed tensor
+            x = self.dropout(x)
         
+        # Output layer
         output = self.output_layer(x, sample)
-        return output.align_to('batch', 'target')  # Rename out_features to target
+        
+        # Restore names and reshape to match expected dimensions
+        return output.squeeze(-1).refine_names('batch')
 
 
 class GPUBayesianEnsemble:
