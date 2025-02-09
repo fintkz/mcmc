@@ -145,8 +145,21 @@ class TFTModel:
         self.batch_size = batch_size
         self.device = device
 
-    def create_sequences(self, X: torch.Tensor, y: torch.Tensor = None) -> tuple:
-        """Create sequences with named dimensions"""
+    def create_sequences(self, X: torch.Tensor, y: torch.Tensor = None) -> Union[torch.Tensor, tuple[torch.Tensor, torch.Tensor]]:
+        """Create sequences with named dimensions
+        
+        Args:
+            X: Input tensor with shape [time, features]
+            y: Optional target tensor with shape [time]
+            
+        Returns:
+            If y is None:
+                X_seq: Tensor with shape [batch, time, features]
+            If y is provided:
+                tuple of (X_seq, y_seq) where:
+                    X_seq: Tensor with shape [batch, time, features]
+                    y_seq: Tensor with shape [batch]
+        """
         # Input shapes: X[time, features], y[time]
         X = X.refine_names('time', 'features')
         if y is not None:
@@ -156,14 +169,16 @@ class TFTModel:
         y_seqs = []
 
         for i in range(len(X) - self.seq_length + 1):
-            X_seqs.append(X[i:i + self.seq_length])
+            # Drop names before appending
+            X_seqs.append(X[i:i + self.seq_length].rename(None))
             if y is not None:
-                y_seqs.append(y[i + self.seq_length - 1])
+                y_seqs.append(y[i + self.seq_length - 1].rename(None))
 
-        # Stack sequences using integer dims first, then refine names
+        # Stack sequences without names, then restore names
         X_seq = torch.stack(X_seqs, dim=0).refine_names('batch', 'time', 'features')
 
         if y is not None:
+            # Stack y sequences without names, then restore names
             y_seq = torch.stack(y_seqs, dim=0).refine_names('batch')
             return X_seq, y_seq
         return X_seq  # Return X_seq when y is None
