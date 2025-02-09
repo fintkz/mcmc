@@ -4,6 +4,7 @@ import torch.nn.functional as F
 from torch.utils.data import TensorDataset, DataLoader
 import numpy as np
 from utils import peak_weighted_loss
+from typing import Tuple
 
 
 class BayesianLinear(nn.Module):
@@ -200,43 +201,42 @@ class GPUBayesianEnsemble:
 
         print(f"Finished training {self.n_models} models")
 
-    def predict(self, X: torch.Tensor) -> tuple:
-        """Generate predictions with uncertainty estimates using named tensors"""
-        # Ensure input has proper names
-        X = X.refine_names('time', 'features')
+    def predict(self, X: torch.Tensor, num_samples: int = 100) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Generate predictions with uncertainty estimates"""
+        self.eval()  # Set to evaluation mode
         
-        # Validate input dimension
-        if X.size('features') != self.input_dim:
-            raise ValueError(
-                f"Input dimension mismatch. Expected {self.input_dim}, got {X.size('features')}"
-            )
-
-        predictions = []
-        for model in self.models:
-            model.eval()
-            model_preds = []
-
-            with torch.no_grad():
-                # Process in batches
-                for i in range(0, len(X), self.batch_size):
-                    batch_X = X[i:i + self.batch_size].to(self.device)
-                    batch_preds = []
-
-                    # MC Dropout samples
-                    for _ in range(50):
-                        pred = model(batch_X, sample=True)
-                        batch_preds.append(pred.rename(None))
-
-                    # Stack along samples dimension
-                    batch_preds = torch.stack(batch_preds, dim='samples')
-                    model_preds.extend(batch_preds.mean('samples').cpu().numpy())
-
-            predictions.append(np.array(model_preds))
-            torch.cuda.empty_cache()
-
-        # Stack predictions from all models
-        predictions = np.stack(predictions)
-        mean_pred = np.mean(predictions, axis=0).flatten()
-        std_pred = np.std(predictions, axis=0).flatten()
-
-        return mean_pred, std_pred
+        # Ensure input is on the correct device
+        X = X.to(self.device)
+        
+        with torch.no_grad():
+            all_preds = []
+            
+            # Get predictions from each model in the ensemble
+            for model in self.models:
+                batch_preds = []
+                
+                # Multiple forward passes for each model
+                for _ in range(num_samples):
+                    pred = model(X, sample=True)
+                    batch_preds.append(pred.rename(None))
+                
+                # Stack predictions from single model [num_samples, batch_size]
+                model_preds = torch.stack(batch_preds, dim=0)
+                all_preds.append(model_preds)
+            
+            # Stack predictions from all models [num_models, num_samples, batch_size]
+            ensemble_preds = torch.stack(all_preds, dim=0)
+            
+            # Calculate mean and std across all predictions
+            # Combine models and samples dimensions for uncertainty estimation
+            all_predictions = ensemble_preds.reshape(-1, ensemble_preds.size(-1))
+            
+            # Calculate statistics
+            mean = all_predictions.mean(dim=0)
+            std = all_predictions.std(dim=0)
+            
+            # Restore names for output tensors
+            mean = mean.refine_names('batch')
+            std = std.refine_names('batch')
+            
+        return mean, std
