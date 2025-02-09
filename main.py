@@ -168,10 +168,11 @@ def process_gpu_task(task: tuple) -> tuple:
 
         # Inverse transform predictions and uncertainty
         # Remove names before reshape operations
+        # Move to CPU and remove names before inverse transform
         bayesian_mean = scaler_y.inverse_transform(
-            bayesian_mean.rename(None).reshape(-1, 1)
+            bayesian_mean.cpu().rename(None).reshape(-1, 1)
         ).flatten()
-        bayesian_std = bayesian_std.rename(None) * scaler_y.scale_[0]
+        bayesian_std = bayesian_std.cpu().rename(None) * scaler_y.scale_[0]
 
         # Move predictions to CPU for evaluation
         y_cpu = y.rename(None).cpu().numpy()
