@@ -31,79 +31,99 @@ class GatedResidualNetwork(nn.Module):
         self.output_size = output_size
         self.hidden_size = hidden_size
         
+        # Main layers
         self.fc1 = TimeDistributed(nn.Linear(input_size, hidden_size))
-        self.fc2 = TimeDistributed(nn.Linear(hidden_size, hidden_size))
-        self.fc3 = TimeDistributed(nn.Linear(hidden_size, output_size))
+        self.elu1 = nn.ELU()
+        self.fc2 = TimeDistributed(nn.Linear(hidden_size, output_size))
+        self.elu2 = nn.ELU()
         
-        self.dropout = nn.Dropout(dropout)
-        self.layernorm = nn.LayerNorm(output_size)
+        # Skip connection if input and output dimensions differ
+        self.skip = TimeDistributed(nn.Linear(input_size, output_size)) if input_size != output_size else None
         
+        # Gating mechanism
         self.gate = TimeDistributed(nn.Linear(input_size + output_size, output_size))
         
-        if input_size != output_size:
-            self.skip_layer = TimeDistributed(nn.Linear(input_size, output_size))
-        else:
-            self.skip_layer = None
-            
+        self.dropout = nn.Dropout(dropout)
+        self.layer_norm = nn.LayerNorm(output_size)
+        
     def forward(self, x):
         # Main branch
-        h = F.elu(self.fc1(x))
+        h = self.fc1(x)
+        h = self.elu1(h)
         h = self.dropout(h)
-        h = F.elu(self.fc2(h))
-        h = self.dropout(h)
-        h = self.fc3(h)
-        h = self.dropout(h)
+        h = self.fc2(h)
+        h = self.elu2(h)
         
         # Skip connection
-        if self.skip_layer is not None:
-            x = self.skip_layer(x)
-            
-        # Gating mechanism
-        gate = self.gate(torch.cat([x, h], dim=-1))
-        gate = torch.sigmoid(gate)
+        if self.skip is not None:
+            x = self.skip(x)
         
-        output = x + gate * h
-        return self.layernorm(output)
+        # Gating mechanism
+        gate = torch.sigmoid(self.gate(torch.cat([x, h], dim=-1)))
+        output = gate * h + (1 - gate) * x
+        
+        # Layer normalization
+        output = self.layer_norm(output)
+        
+        return output
 
 class TemporalFusionTransformer(nn.Module):
     def __init__(self, num_features, hidden_size=512, num_heads=8, dropout=0.1):
         super().__init__()
-        self.hidden_size = hidden_size
         self.num_features = num_features
+        self.hidden_size = hidden_size
         
-        # Variable selection networks
+        # Feature processing
         self.feature_grn = GatedResidualNetwork(
-            num_features,
-            hidden_size,
-            hidden_size,
-            dropout
+            input_size=num_features,
+            hidden_size=hidden_size,
+            output_size=hidden_size,
+            dropout=dropout
         )
         
         # Temporal processing
-        self.temporal_encoder = nn.TransformerEncoder(
-            nn.TransformerEncoderLayer(
-                d_model=hidden_size,
-                nhead=num_heads,
-                dim_feedforward=4*hidden_size,
-                dropout=dropout,
-                batch_first=True
-            ),
-            num_layers=3
+        self.temporal_grn = GatedResidualNetwork(
+            input_size=hidden_size,
+            hidden_size=hidden_size,
+            output_size=hidden_size,
+            dropout=dropout
         )
         
-        # Output layer
-        self.output_layer = nn.Linear(hidden_size, 1)
+        # Self-attention
+        self.attention = nn.MultiheadAttention(
+            embed_dim=hidden_size,
+            num_heads=num_heads,
+            dropout=dropout,
+            batch_first=True
+        )
         
+        # Final processing
+        self.final_grn = GatedResidualNetwork(
+            input_size=hidden_size,
+            hidden_size=hidden_size,
+            output_size=1,  # Single output value
+            dropout=dropout
+        )
+    
     def forward(self, x):
         # Feature processing
         processed_features = self.feature_grn(x)
         
         # Temporal processing
-        temporal_features = self.temporal_encoder(processed_features)
+        temporal_features = self.temporal_grn(processed_features)
         
-        # Output
-        return self.output_layer(temporal_features)
-
+        # Self-attention
+        attended_features, _ = self.attention(
+            temporal_features,
+            temporal_features,
+            temporal_features
+        )
+        
+        # Final processing
+        output = self.final_grn(attended_features)
+        
+        return output
+    
 def create_sequences(X, y, seq_length):
     """Create sequences for temporal modeling"""
     Xs, ys = [], []
@@ -117,8 +137,8 @@ class TFTModel:
         self,
         num_features,
         seq_length=30,
-        hidden_size=512,
-        num_heads=8,
+        hidden_size=64,  # Reduced from 512
+        num_heads=4,     # Reduced from 8
         dropout=0.1,
         batch_size=512,
         device=None
@@ -135,11 +155,19 @@ class TFTModel:
             num_heads=num_heads,
             dropout=dropout
         ).to(self.device)
-        
+    
     def train(self, X, y, epochs=400):
         """Train the model"""
         # Create sequences for temporal modeling
-        X_seq, y_seq = create_sequences(X, y, self.seq_length)
+        X_seq = []
+        y_seq = []
+        
+        for i in range(len(X) - self.seq_length + 1):
+            X_seq.append(X[i:(i + self.seq_length)])
+            y_seq.append(y[i + self.seq_length - 1])
+            
+        X_seq = np.array(X_seq)
+        y_seq = np.array(y_seq)
         
         # Keep data on CPU initially
         X = torch.FloatTensor(X_seq)
@@ -147,29 +175,28 @@ class TFTModel:
         
         if len(y.shape) == 1:
             y = y.unsqueeze(-1)
-            
-        optimizer = torch.optim.AdamW(
-            self.model.parameters(), 
-            lr=0.001, 
-            weight_decay=0.01
-        )
         
-        scheduler = OneCycleLR(
-            optimizer,
-            max_lr=0.01,
-            epochs=epochs,
-            steps_per_epoch=max(1, len(X) // self.batch_size),
-            pct_start=0.3,
-            anneal_strategy='cos'
-        )
-        
-        # Create DataLoader without pin_memory
         dataset = torch.utils.data.TensorDataset(X, y)
         loader = torch.utils.data.DataLoader(
             dataset, 
             batch_size=self.batch_size,
             shuffle=True,
             pin_memory=False
+        )
+        
+        optimizer = torch.optim.AdamW(
+            self.model.parameters(),
+            lr=0.001,
+            weight_decay=0.01
+        )
+        
+        scheduler = torch.optim.lr_scheduler.OneCycleLR(
+            optimizer,
+            max_lr=0.01,
+            epochs=epochs,
+            steps_per_epoch=len(loader),
+            pct_start=0.3,
+            anneal_strategy='cos'
         )
         
         best_loss = float('inf')
@@ -181,18 +208,20 @@ class TFTModel:
             self.model.train()
             
             for batch_X, batch_y in loader:
-                # Move batch to device here
                 batch_X = batch_X.to(self.device)
                 batch_y = batch_y.to(self.device)
                 
                 optimizer.zero_grad()
                 outputs = self.model(batch_X)
-                predictions = outputs[:, -1, :]
-                loss = peak_weighted_loss(predictions, batch_y)
+                predictions = outputs[:, -1, 0]  # Take last timestep prediction
+                
+                loss = peak_weighted_loss(predictions, batch_y.squeeze())
                 loss.backward()
+                
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
                 optimizer.step()
                 scheduler.step()
+                
                 epoch_loss += loss.item()
             
             if epoch_loss < best_loss:
@@ -200,11 +229,11 @@ class TFTModel:
                 patience_counter = 0
             else:
                 patience_counter += 1
-                
+            
             if patience_counter >= patience:
                 print(f"Early stopping at epoch {epoch}")
                 break
-                
+            
             if (epoch + 1) % 20 == 0:
                 print(f"Epoch {epoch+1}/{epochs}, Loss: {epoch_loss:.4f}")
     
@@ -221,13 +250,15 @@ class TFTModel:
         self.model.eval()
         
         with torch.no_grad():
-            # Move to device only when needed
-            X = X.to(self.device)
-            predictions = self.model(X)
-            predictions = predictions[:, -1, 0]
+            # Process in batches
+            predictions = []
+            for i in range(0, len(X), self.batch_size):
+                batch_X = X[i:i + self.batch_size].to(self.device)
+                batch_preds = self.model(batch_X)[:, -1, 0]  # Take last timestep
+                predictions.extend(batch_preds.cpu().numpy())
             
         # For the first seq_length-1 points, use the first prediction
-        pad_predictions = np.full(self.seq_length - 1, predictions[0].cpu().item())
-        final_predictions = np.concatenate([pad_predictions, predictions.cpu().numpy()])
-            
+        pad_predictions = np.full(self.seq_length - 1, predictions[0])
+        final_predictions = np.concatenate([pad_predictions, predictions])
+        
         return final_predictions
