@@ -38,7 +38,7 @@ class BayesianLinear(nn.Module):
         return F.linear(x, weight, bias)
 
 class BayesianNetwork(nn.Module):
-    def __init__(self, input_dim, hidden_sizes=[512, 256, 128]):
+    def __init__(self, input_dim, hidden_sizes=[1024, 512, 256]):  # Larger network
         super().__init__()
         
         self.hidden_layers = nn.ModuleList()
@@ -53,12 +53,12 @@ class BayesianNetwork(nn.Module):
         # Output layer
         self.output_layer = BayesianLinear(hidden_sizes[-1], 1)
         
-        # Dropout
-        self.dropout = nn.Dropout(0.1)
-        
+        # Increased dropout for better regularization
+        self.dropout = nn.Dropout(0.2)  # Increased from 0.1
+
     def forward(self, x, sample=False):
         for layer in self.hidden_layers:
-            x = F.relu(layer(x, sample))
+            x = F.elu(layer(x, sample))  # Changed from ReLU to ELU
             x = self.dropout(x)
         return self.output_layer(x, sample)
 
@@ -69,7 +69,7 @@ class GPUBayesianEnsemble:
         self.n_models = n_models
         self.models = []
         
-    def train(self, X, y, epochs=800, batch_size=64, num_samples=10):
+    def train(self, X, y, epochs=1200, batch_size=128, num_samples=15):
         X = torch.FloatTensor(X).to(self.device)
         y = torch.FloatTensor(y).to(self.device)
         
@@ -81,10 +81,14 @@ class GPUBayesianEnsemble:
         
         for i in range(self.n_models):
             model = BayesianNetwork(self.input_dim).to(self.device)
-            optimizer = torch.optim.AdamW(model.parameters(), lr=0.001, weight_decay=0.01)
+            optimizer = torch.optim.AdamW(
+                model.parameters(), 
+                lr=0.002,           # Increased from 0.001
+                weight_decay=0.01
+            )
             scheduler = torch.optim.lr_scheduler.OneCycleLR(
                 optimizer, 
-                max_lr=0.01,
+                max_lr=0.02,        # Increased from 0.01
                 epochs=epochs,
                 steps_per_epoch=len(loader),
                 pct_start=0.3,
@@ -92,7 +96,7 @@ class GPUBayesianEnsemble:
             )
             
             best_loss = float('inf')
-            patience = 20
+            patience = 25           # Increased from 20
             patience_counter = 0
             
             for epoch in range(epochs):
@@ -102,11 +106,9 @@ class GPUBayesianEnsemble:
                 for batch_X, batch_y in loader:
                     optimizer.zero_grad()
                     
-                    # Multiple forward passes for MC Dropout
                     predictions = torch.stack([model(batch_X, sample=True) for _ in range(num_samples)])
                     pred_mean = predictions.mean(0)
                     
-                    # Custom loss
                     loss = peak_weighted_loss(pred_mean, batch_y)
                     
                     loss.backward()
