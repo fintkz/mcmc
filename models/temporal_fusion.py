@@ -120,15 +120,13 @@ class TFTModel:
         hidden_size=512,
         num_heads=8,
         dropout=0.1,
-        batch_size=256,
-        num_workers=4,
+        batch_size=512,
         device=None
     ):
         self.num_features = num_features
         self.seq_length = seq_length
         self.hidden_size = hidden_size
         self.batch_size = batch_size
-        self.num_workers = num_workers
         self.device = device or torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         
         self.model = TemporalFusionTransformer(
@@ -143,8 +141,9 @@ class TFTModel:
         # Create sequences for temporal modeling
         X_seq, y_seq = create_sequences(X, y, self.seq_length)
         
-        X = torch.FloatTensor(X_seq).to(self.device)
-        y = torch.FloatTensor(y_seq).to(self.device)
+        # Keep data on CPU initially
+        X = torch.FloatTensor(X_seq)
+        y = torch.FloatTensor(y_seq)
         
         if len(y.shape) == 1:
             y = y.unsqueeze(-1)
@@ -164,14 +163,13 @@ class TFTModel:
             anneal_strategy='cos'
         )
         
-        # Create DataLoader with specified batch size and workers
+        # Create DataLoader without pin_memory
         dataset = torch.utils.data.TensorDataset(X, y)
         loader = torch.utils.data.DataLoader(
             dataset, 
             batch_size=self.batch_size,
             shuffle=True,
-            num_workers=self.num_workers,
-            pin_memory=True  # This helps with GPU transfer
+            pin_memory=False
         )
         
         best_loss = float('inf')
@@ -183,9 +181,9 @@ class TFTModel:
             self.model.train()
             
             for batch_X, batch_y in loader:
-                # Move batch to device
-                batch_X = batch_X.to(self.device, non_blocking=True)
-                batch_y = batch_y.to(self.device, non_blocking=True)
+                # Move batch to device here
+                batch_X = batch_X.to(self.device)
+                batch_y = batch_y.to(self.device)
                 
                 optimizer.zero_grad()
                 outputs = self.model(batch_X)
@@ -218,16 +216,18 @@ class TFTModel:
             X_seq.append(X[i:(i + self.seq_length)])
         X_seq = np.array(X_seq)
         
-        X = torch.FloatTensor(X_seq).to(self.device)
+        # Keep data on CPU initially
+        X = torch.FloatTensor(X_seq)
         self.model.eval()
         
         with torch.no_grad():
+            # Move to device only when needed
+            X = X.to(self.device)
             predictions = self.model(X)
-            # Take the last prediction for each sequence
             predictions = predictions[:, -1, 0]
             
         # For the first seq_length-1 points, use the first prediction
-        pad_predictions = np.full(self.seq_length - 1, predictions[0].item())
+        pad_predictions = np.full(self.seq_length - 1, predictions[0].cpu().item())
         final_predictions = np.concatenate([pad_predictions, predictions.cpu().numpy()])
             
         return final_predictions

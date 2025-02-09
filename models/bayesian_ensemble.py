@@ -53,7 +53,7 @@ class BayesianNetwork(nn.Module):
         # Output layer
         self.output_layer = BayesianLinear(hidden_sizes[-1], 1)
         
-        # Increased dropout for better regularization
+        # Dropout for regularization
         self.dropout = nn.Dropout(0.2)
 
     def forward(self, x, sample=False):
@@ -68,22 +68,20 @@ class GPUBayesianEnsemble:
         input_dim,
         n_models=10,
         device=None,
-        batch_size=256,
-        num_workers=4
+        batch_size=512
     ):
         self.device = device or torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.input_dim = input_dim
         self.n_models = n_models
         self.models = []
         self.batch_size = batch_size
-        self.num_workers = num_workers
         
     def create_temporal_features(self, X):
         """Create temporal features for the input data"""
         batch_size = X.shape[0]
         
         # Create time index features
-        time_index = np.arange(batch_size).reshape(-1, 1) / batch_size  # Normalized time
+        time_index = np.arange(batch_size).reshape(-1, 1) / batch_size
         
         # Create seasonal features
         day_sin = np.sin(2 * np.pi * time_index * 365)
@@ -93,9 +91,9 @@ class GPUBayesianEnsemble:
         
         # Create lagged features
         lagged_features = []
-        for lag in [1, 7, 14, 30]:  # Common time series lags
+        for lag in [1, 7, 14, 30]:
             lagged = np.zeros((batch_size, 1))
-            lagged[lag:] = X[:-lag, -1:]  # Use last column (target) for lags
+            lagged[lag:] = X[:-lag, -1:]
             lagged_features.append(lagged)
             
         # Combine all temporal features
@@ -111,8 +109,9 @@ class GPUBayesianEnsemble:
         # Add temporal features
         X = self.create_temporal_features(X)
         
-        X = torch.FloatTensor(X).to(self.device)
-        y = torch.FloatTensor(y).to(self.device)
+        # Keep data on CPU initially
+        X = torch.FloatTensor(X)
+        y = torch.FloatTensor(y)
         
         if len(y.shape) == 1:
             y = y.view(-1, 1)
@@ -122,8 +121,7 @@ class GPUBayesianEnsemble:
             dataset, 
             batch_size=self.batch_size, 
             shuffle=True,
-            num_workers=self.num_workers,
-            pin_memory=True
+            pin_memory=False  # Disable pin_memory
         )
         
         for i in range(self.n_models):
@@ -151,8 +149,9 @@ class GPUBayesianEnsemble:
                 model.train()
                 
                 for batch_X, batch_y in loader:
-                    batch_X = batch_X.to(self.device, non_blocking=True)
-                    batch_y = batch_y.to(self.device, non_blocking=True)
+                    # Move to GPU here
+                    batch_X = batch_X.to(self.device)
+                    batch_y = batch_y.to(self.device)
                     
                     optimizer.zero_grad()
                     
@@ -187,18 +186,28 @@ class GPUBayesianEnsemble:
         """Generate predictions with uncertainty estimates"""
         # Add temporal features for prediction
         X = self.create_temporal_features(X)
-        X = torch.FloatTensor(X).to(self.device)
         
+        # Keep data on CPU initially
+        X = torch.FloatTensor(X)
         predictions = []
         
         for model in self.models:
             model.eval()
             model_preds = []
+            
             with torch.no_grad():
-                for _ in range(100):  # More samples for prediction
-                    pred = model(X, sample=True)
-                    model_preds.append(pred.cpu().numpy())
-            predictions.append(np.mean(model_preds, axis=0))
+                # Process in batches to avoid memory issues
+                for i in range(0, len(X), self.batch_size):
+                    batch_X = X[i:i + self.batch_size].to(self.device)
+                    batch_preds = []
+                    
+                    for _ in range(100):  # More samples for prediction
+                        pred = model(batch_X, sample=True)
+                        batch_preds.append(pred.cpu().numpy())
+                    
+                    model_preds.extend(np.mean(batch_preds, axis=0))
+            
+            predictions.append(np.array(model_preds))
         
         predictions = np.stack(predictions)
         mean_pred = np.mean(predictions, axis=0).flatten()
