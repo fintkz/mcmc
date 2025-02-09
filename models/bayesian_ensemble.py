@@ -112,11 +112,11 @@ class GPUBayesianEnsemble:
         self.models = []
 
     def train(self, X: torch.Tensor, y: torch.Tensor, epochs: int = 400, 
-             num_samples: int = 10):
+            num_samples: int = 10):
         """Train the ensemble with named tensors"""
-        # Ensure inputs have proper names
-        X = X.refine_names('time', 'features')
-        y = y.refine_names('time')
+        # Ensure inputs have proper names and are on CPU
+        X = X.cpu().refine_names('time', 'features')
+        y = y.cpu().refine_names('time')
         
         # Validate input dimensions
         if X.size('features') != self.input_dim:
@@ -127,13 +127,22 @@ class GPUBayesianEnsemble:
         # Create dataset (TensorDataset doesn't support named tensors)
         dataset = TensorDataset(X.rename(None), y.rename(None))
         loader = DataLoader(
-            dataset, batch_size=self.batch_size, shuffle=True, pin_memory=True
+            dataset, 
+            batch_size=self.batch_size, 
+            shuffle=True, 
+            pin_memory=True,
+            num_workers=0  # Avoid multiprocessing issues
         )
+
+        # Clear any existing models
+        self.models = []
 
         for i in range(self.n_models):
             model = BayesianNetwork(self.input_dim).to(self.device)
             optimizer = torch.optim.AdamW(
-                model.parameters(), lr=0.001, weight_decay=0.01
+                model.parameters(), 
+                lr=0.001, 
+                weight_decay=0.01
             )
 
             scheduler = torch.optim.lr_scheduler.OneCycleLR(
@@ -154,7 +163,7 @@ class GPUBayesianEnsemble:
                 model.train()
 
                 for batch_X, batch_y in loader:
-                    # Restore names for tensors
+                    # Move to GPU and restore names
                     batch_X = batch_X.to(self.device).refine_names('batch', 'features')
                     batch_y = batch_y.to(self.device).refine_names('batch')
 
@@ -166,11 +175,10 @@ class GPUBayesianEnsemble:
                         pred = model(batch_X, sample=True)
                         predictions.append(pred.rename(None))
                     
-                    predictions = torch.stack(predictions, dim='samples')
-                    pred_mean = predictions.mean('samples')
+                    predictions = torch.stack(predictions, dim=0)  # [samples, batch]
+                    pred_mean = predictions.mean(0)  # Average over samples
 
-                    loss = peak_weighted_loss(pred_mean.rename(None), 
-                                           batch_y.rename(None))
+                    loss = peak_weighted_loss(pred_mean, batch_y.rename(None))
 
                     loss.backward()
                     torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
@@ -186,7 +194,7 @@ class GPUBayesianEnsemble:
                     patience_counter += 1
 
                 if patience_counter >= patience:
-                    print(f"Early stopping at epoch {epoch}")
+                    print(f"Model {i + 1}/{self.n_models}: Early stopping at epoch {epoch}")
                     break
 
                 if (epoch + 1) % 20 == 0:
@@ -198,6 +206,8 @@ class GPUBayesianEnsemble:
 
             self.models.append(model)
             torch.cuda.empty_cache()
+
+        print(f"Finished training {self.n_models} models")
 
     def predict(self, X: torch.Tensor) -> tuple:
         """Generate predictions with uncertainty estimates using named tensors"""
