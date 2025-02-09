@@ -1,16 +1,7 @@
-import streamlit as st
 import json
+import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-import numpy as np
-
-st.set_page_config(layout="wide")
-
-# Load the model results
-@st.cache_data
-def load_results():
-    with open('results/model_results.json', 'r') as f:
-        return json.load(f)
 
 def get_error_metric(predictions, actual):
     """Calculate MAPE"""
@@ -114,24 +105,20 @@ def create_model_plot(actual, predictions, feature_dates, selected_features, mod
         showlegend=True,
         margin=dict(t=50)
     )
-
+    
     return fig
 
-def main():
-    st.title("Demand Forecasting Model Comparison")
-    
+def run_analysis(selected_features=None):
     # Load results
-    results = load_results()
+    with open('results/model_results.json', 'r') as f:
+        results = json.load(f)
+    
     actual = results['actual']
     feature_dates = results['feature_dates']
     
-    # Feature selection
-    st.sidebar.header("Feature Selection")
-    all_features = ['promotions', 'weather', 'sports', 'school', 'holidays']
-    selected_features = []
-    for feature in all_features:
-        if st.sidebar.checkbox(feature.title(), value=True):
-            selected_features.append(feature)
+    # Use all features if none selected
+    if selected_features is None:
+        selected_features = ['promotions', 'weather', 'sports', 'school', 'holidays']
     
     # Get predictions for selected feature combination
     feature_key = '_'.join(sorted([f"{f}_active" if f == 'promotions' else f"{f}_event" 
@@ -140,31 +127,46 @@ def main():
                                  for f in selected_features])) or 'baseline'
     
     predictions = results['predictions'].get(feature_key, results['predictions']['baseline'])
+    
+    # Create plots for each model
+    plots = {}
+    for model in ['prophet', 'tft', 'bayesian']:
+        plots[model] = create_model_plot(
+            actual, predictions, feature_dates,
+            selected_features, model, predictions[model]
+        )
+    
+    return plots
 
-    # Create three columns for the plots
+def streamlit_app():
+    import streamlit as st
+    
+    st.set_page_config(layout="wide")
+    st.title("Demand Forecasting Model Comparison")
+    
+    # Sidebar feature selection
+    st.sidebar.header("Feature Selection")
+    all_features = ['promotions', 'weather', 'sports', 'school', 'holidays']
+    selected_features = []
+    for feature in all_features:
+        if st.sidebar.checkbox(feature.title(), value=True):
+            selected_features.append(feature)
+    
+    # Get plots
+    plots = run_analysis(selected_features)
+    
+    # Display plots in columns
     col1, col2, col3 = st.columns(3)
-
+    
     with col1:
-        prophet_fig = create_model_plot(
-            actual, predictions, feature_dates, 
-            selected_features, 'prophet', predictions['prophet']
-        )
-        st.plotly_chart(prophet_fig, use_container_width=True)
-
+        st.plotly_chart(plots['prophet'], use_container_width=True)
+    
     with col2:
-        tft_fig = create_model_plot(
-            actual, predictions, feature_dates, 
-            selected_features, 'tft', predictions['tft']
-        )
-        st.plotly_chart(tft_fig, use_container_width=True)
-
+        st.plotly_chart(plots['tft'], use_container_width=True)
+    
     with col3:
-        bayesian_fig = create_model_plot(
-            actual, predictions, feature_dates, 
-            selected_features, 'bayesian', predictions['bayesian']
-        )
-        st.plotly_chart(bayesian_fig, use_container_width=True)
-
+        st.plotly_chart(plots['bayesian'], use_container_width=True)
+    
     # Model Explanations
     st.markdown("""
     ### Model Characteristics:
@@ -186,4 +188,14 @@ def main():
     """)
 
 if __name__ == "__main__":
-    main()
+    import sys
+    import os
+    
+    # Handle both direct Python and Streamlit execution
+    if "STREAMLIT_SCRIPT_PATH" in os.environ:
+        streamlit_app()
+    else:
+        # Regular Python execution
+        plots = run_analysis()
+        for model, fig in plots.items():
+            fig.show()
