@@ -54,7 +54,7 @@ class GatedResidualNetwork(nn.Module):
         # Skip connection if input and output dimensions differ
         self.skip = TimeDistributed(nn.Linear(input_size, output_size)) if input_size != output_size else None
 
-        # Gating mechanism
+        # Gating mechanism - FIXED: input size should be input_size + output_size
         self.gate = TimeDistributed(nn.Linear(input_size + output_size, output_size))
         self.dropout = nn.Dropout(dropout)
         self.layer_norm = nn.LayerNorm(output_size)
