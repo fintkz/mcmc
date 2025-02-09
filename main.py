@@ -73,9 +73,20 @@ def process_gpu_task(task: tuple) -> tuple:
         else:
             features = data.features
 
-        # Combine features and temporal features
-        X = torch.cat([features, data.temporal], dim='features')
+        # Rename temporal features dimension to match features before concatenating
+        temporal_aligned = data.temporal.rename(None).rename('time', 'features')
+
+        # Combine features and temporal features (using unnamed tensors for concatenation)
+        X = torch.cat([
+            features.rename(None),
+            temporal_aligned.rename(None)
+        ], dim=1).refine_names('time', 'features')
+        
         y = data.target
+
+        # Move tensors to device
+        X = X.to(device)
+        y = y.to(device)
 
         # Scale features
         scaler_X = StandardScaler()
@@ -83,16 +94,19 @@ def process_gpu_task(task: tuple) -> tuple:
         
         # Scale while preserving names
         X_scaled = torch.tensor(
-            scaler_X.fit_transform(X.rename(None))
+            scaler_X.fit_transform(X.rename(None).cpu().numpy()),
+            device=device
         ).refine_names('time', 'features')
         
         y_scaled = torch.tensor(
-            scaler_y.fit_transform(y.rename(None).unsqueeze(-1))
+            scaler_y.fit_transform(y.rename(None).cpu().numpy().reshape(-1, 1)),
+            device=device
         ).squeeze(-1).refine_names('time')
 
         # Log shapes for verification
         logger.info(f"Input tensor shape: {dict(X_scaled.shape)}")
         logger.info(f"Target tensor shape: {dict(y_scaled.shape)}")
+        logger.info(f"Number of features: {X_scaled.size('features')}")
 
         # Initialize models
         prophet_model = ProphetModel()
@@ -110,10 +124,10 @@ def process_gpu_task(task: tuple) -> tuple:
             batch_size=32
         )
 
-        # Train Prophet
+        # Train Prophet (CPU model)
         logger.info(f"Training Prophet for {combo_name}")
         prophet_preds = prophet_model.train_and_predict(
-            data.dates, y.rename(None).numpy()
+            data.dates, y.rename(None).cpu().numpy()
         )
 
         # Train TFT
@@ -121,7 +135,9 @@ def process_gpu_task(task: tuple) -> tuple:
         tft_model.train(X_scaled, y_scaled)
         tft_preds = tft_model.predict(X_scaled)
         # Inverse transform predictions
-        tft_preds = scaler_y.inverse_transform(tft_preds.reshape(-1, 1)).flatten()
+        tft_preds = scaler_y.inverse_transform(
+            tft_preds.reshape(-1, 1)
+        ).flatten()
 
         # Train Bayesian
         logger.info(f"Training Bayesian for {combo_name}")
@@ -133,20 +149,23 @@ def process_gpu_task(task: tuple) -> tuple:
         ).flatten()
         bayesian_std = bayesian_std * scaler_y.scale_[0]
 
+        # Move predictions to CPU for evaluation
+        y_cpu = y.rename(None).cpu().numpy()
+
         # Evaluate predictions
         result = {
             "prophet": {
                 "predictions": prophet_preds.tolist(),
-                "metrics": evaluate_predictions(y.rename(None).numpy(), prophet_preds)
+                "metrics": evaluate_predictions(y_cpu, prophet_preds)
             },
             "tft": {
                 "predictions": tft_preds.tolist(),
-                "metrics": evaluate_predictions(y.rename(None).numpy(), tft_preds)
+                "metrics": evaluate_predictions(y_cpu, tft_preds)
             },
             "bayesian": {
                 "predictions": bayesian_mean.tolist(),
                 "uncertainty": bayesian_std.tolist(),
-                "metrics": evaluate_predictions(y.rename(None).numpy(), bayesian_mean)
+                "metrics": evaluate_predictions(y_cpu, bayesian_mean)
             }
         }
 
@@ -154,6 +173,10 @@ def process_gpu_task(task: tuple) -> tuple:
         logger.info(f"Prophet MAPE: {result['prophet']['metrics']['mape']:.2f}%")
         logger.info(f"TFT MAPE: {result['tft']['metrics']['mape']:.2f}%")
         logger.info(f"Bayesian MAPE: {result['bayesian']['metrics']['mape']:.2f}%")
+
+        # Clean up GPU memory
+        del X_scaled, y_scaled, tft_model, bayesian_model
+        torch.cuda.empty_cache()
 
         return combo_name, result
 
