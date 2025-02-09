@@ -1,98 +1,113 @@
 
-# MCMC Grocery Demand Simulation
+# Retail Demand Forecasting: Model Comparison
 
-A simple, fun project to simulate and preprocess grocery store demand data using Python!
+## Motivation
+Retail demand forecasting is a crucial business problem that requires balancing multiple objectives:
+- Accurate predictions to optimize inventory
+- Understanding uncertainty for risk management
+- Interpretable results for business decisions
+- Handling complex patterns including seasonality and special events
 
-I started this project to explore time series data generation and preprocessing techniques. If you have any suggestions or find areas that could be improved, feel free to open an issue or contribute with a pull request. I'm here to learn and grow, and I appreciate any feedback or contributions.
+This project explores three different approaches to demand forecasting, each with its own strengths:
+1. Bayesian Neural Network Ensemble - For uncertainty quantification
+2. Temporal Fusion Transformer - For complex temporal patterns
+3. Prophet - For interpretable seasonality components
 
-## Installation
+## Problem Statement
+Given historical retail demand data with various features (temperature, holidays, etc.), predict future demand while:
+- Quantifying prediction uncertainty
+- Capturing seasonal patterns
+- Handling demand spikes
+- Providing interpretable insights
 
-Requirements:
+## Approach
+The project implements a comparative study using synthetic retail data that mimics real-world patterns:
+- Base seasonal patterns (yearly, weekly)
+- Special events (holidays, promotions)
+- External factors (temperature, weekends)
+- Random demand spikes
 
-- Python 3.8+
-- NumPy
-- Pandas
-- scikit-learn
+Each model addresses different aspects of the problem:
+- Bayesian Ensemble provides uncertainty estimates
+- TFT captures complex temporal dependencies
+- Prophet offers interpretable decomposition of trends
 
-To get started, clone the repository and install the required packages:
-
-```sh
-git clone https://github.com/yourusername/mcmc.git
-cd mcmc
-pip install -r requirements.txt
+## Project Structure
+```
+mcmc/
+├── data.py           # Data generation and preprocessing
+├── main.py          # Main training and evaluation script
+├── models/
+│   ├── bayesian_ensemble.py    # Bayesian Neural Network Ensemble
+│   ├── prophet_model.py        # Facebook Prophet wrapper
+│   └── temporal_fusion.py      # Temporal Fusion Transformer
+├── utils.py         # Shared utilities (loss, metrics, visualization)
+├── requirements.txt # Project dependencies
+└── results/        # Generated visualizations and metrics
+    ├── prophet_components.png
+    ├── model_comparison.png
+    ├── bayesian_uncertainty.png
+    ├── tft_attention.png
+    └── metrics.txt
 ```
 
-## Usage
+## Setup and Usage
 
-To generate synthetic grocery store demand data and preprocess it, you can use the provided functions in `data.py`.
-
-### Generating Synthetic Data
-
-The `generate_synthetic_grocery_data` function generates synthetic grocery store demand data with yearly and weekly seasonality, random noise, and spikes.
-
-Example usage:
-
-```python
-from data import generate_synthetic_grocery_data
-
-df = generate_synthetic_grocery_data(n_days=365)
-print(df.head())
+Run the comparison:
+```bash
+uv run main.py
 ```
 
-### Preprocessing Data
+The script will:
+- Generate synthetic retail data
+- Train all three models
+- Save visualizations and metrics to 'results' directory
 
-The `preprocess_data` function preprocesses the generated data by adding temporal features, lag features, rolling statistics, and scaling the features.
+## Model Details
 
-Example usage:
+### Bayesian Neural Network Ensemble
+- Ensemble of neural networks with uncertainty estimation
+- Uses Monte Carlo sampling for predictions
+- Provides confidence intervals for forecasts
+- Custom peak-weighted loss for handling demand spikes
 
-```python
-from data import preprocess_data
+### Temporal Fusion Transformer (TFT)
+- Attention-based architecture for time series
+- Handles multiple feature types
+- Captures long-range dependencies
+- Provides attention visualization
 
-X_scaled, y_scaled, scaler_y, feature_columns = preprocess_data(df)
-print(X_scaled[:5])
-print(y_scaled[:5])
-```
+### Prophet
+- Decomposable time series model
+- Handles multiple seasonality
+- Interpretable components
+- Built-in handling of holidays and events
 
-## Configuration
+## Results
+The models are evaluated using:
+- RMSE (Root Mean Square Error)
+- MAPE (Mean Absolute Percentage Error)
+- Visual comparison of predictions
+- Uncertainty visualization (Bayesian)
+- Component analysis (Prophet)
+- Attention patterns (TFT)
 
-The main functions you'll care about are:
+Results are saved in the 'results' directory with:
+- Comparative performance plots
+- Individual model visualizations
+- Numerical metrics
 
-### Generate Synthetic Data
+## Future Work
+- Support for real retail data
+- Additional models (LightGBM, DeepAR)
+- Hyperparameter optimization
+- Online learning capabilities
+- Multi-store/multi-product forecasting
 
-```python
-generate_synthetic_grocery_data(n_days=365)
-```
+## GPU Support
+The project is optimized for GPU usage, particularly:
+- Bayesian Ensemble training
+- TFT model operations
+- Batch processing of large datasets
 
-Generates synthetic grocery store demand data for the specified number of days.
-
-### Preprocess Data
-
-```python
-preprocess_data(df)
-```
-
-Preprocesses the data with temporal and statistical features, and scales the features and target.
-
-## Example
-
-Here's a complete example of generating and preprocessing the data:
-
-```python
-from data import generate_synthetic_grocery_data, preprocess_data
-
-# Generate synthetic data
-df = generate_synthetic_grocery_data(n_days=365)
-
-# Preprocess the data
-X_scaled, y_scaled, scaler_y, feature_columns = preprocess_data(df)
-
-# Print the first few rows of the scaled features and target
-print(X_scaled[:5])
-print(y_scaled[:5])
-```
-
-## Contributing
-
-Contributions are always welcome!
-
-Just open a PR and I'll review it!
+Recommended: NVIDIA GPU with CUDA support for optimal performance.
