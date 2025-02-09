@@ -182,8 +182,24 @@ class TFTModel:
 
     def train(self, X, y, epochs=400):
         """Train the model"""
-        # Create sequences
-        X_seq, y_seq = self.create_sequences(X, y)
+        # Input validation
+        if len(X) != len(y):
+            raise ValueError("X and y must have the same length")
+        if len(X) < self.seq_length:
+            raise ValueError(f"Input length must be at least {self.seq_length}")
+
+        # Normalize inputs
+        X_mean = X.mean(axis=0, keepdims=True)
+        X_std = X.std(axis=0, keepdims=True)
+        X_std[X_std == 0] = 1  # Prevent division by zero
+        X_normalized = (X - X_mean) / X_std
+
+        # Store normalization parameters for prediction
+        self.X_mean = X_mean
+        self.X_std = X_std
+
+        # Create sequences with normalized data
+        X_seq, y_seq = self.create_sequences(X_normalized, y)
 
         # Convert to tensors (keep on CPU initially)
         X = torch.FloatTensor(X_seq)

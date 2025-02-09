@@ -13,6 +13,7 @@ from utils import evaluate_predictions
 import os
 import logging
 from datetime import datetime
+from sklearn.preprocessing import StandardScaler
 
 
 def setup_logging():
@@ -91,7 +92,12 @@ def process_gpu_task(task):
         combo_name = "_".join(combo) if combo else "baseline"
         logger.info(f"\nTraining models for combination: {combo_name} on GPU {gpu_id}")
 
+        # Create a copy of the dataframe and scale the target variable
         df_subset = df.copy()
+        scaler = StandardScaler()
+        y_scaled = scaler.fit_transform(df_subset["y"].values.reshape(-1, 1)).flatten()
+        df_subset["y"] = y_scaled
+
         # For missing features, set their values to 0
         missing_features = set(features) - set(combo)
         for feature in missing_features:
@@ -103,64 +109,91 @@ def process_gpu_task(task):
         X = np.hstack([feature_matrix, temporal_matrix])
         y = df_subset["y"].values
 
-        # Prophet
-        logger.info(f"Training Prophet for {combo_name}")
-        prophet_model = ProphetModel()
-        prophet_df = pd.DataFrame({"ds": df_subset["ds"], "y": df_subset["y"]})
-        for feature in combo:
-            prophet_df[feature] = df_subset[feature]
-        prophet_model.add_external_features(list(combo))
-        prophet_model.fit(prophet_df)
-        prophet_forecast = prophet_model.predict(prophet_df)
+        # Validate input data
+        if np.any(np.isnan(X)) or np.any(np.isinf(X)):
+            raise ValueError("Invalid values in feature matrix")
+        if np.any(np.isnan(y)) or np.any(np.isinf(y)):
+            raise ValueError("Invalid values in target variable")
 
-        # TFT
-        logger.info(f"Training TFT for {combo_name}")
-        tft_model = TFTModel(
-            num_features=X.shape[1], seq_length=30, batch_size=32, device=device
-        )
-        tft_model.train(X, y)
-        tft_preds = tft_model.predict(X)
+        try:
+            # Prophet
+            logger.info(f"Training Prophet for {combo_name}")
+            prophet_model = ProphetModel()
+            # Use unscaled data for Prophet
+            prophet_df = pd.DataFrame({"ds": df["ds"], "y": df["y"]})
+            for feature in combo:
+                prophet_df[feature] = df[feature]
+            prophet_model.add_external_features(list(combo))
+            prophet_model.fit(prophet_df)
+            prophet_forecast = prophet_model.predict(prophet_df)
 
-        # Clear CUDA cache after TFT
-        torch.cuda.empty_cache()
+            # TFT
+            logger.info(f"Training TFT for {combo_name}")
+            tft_model = TFTModel(
+                num_features=X.shape[1], seq_length=30, batch_size=32, device=device
+            )
+            tft_model.train(X, y)
+            tft_preds = tft_model.predict(X)
 
-        # Bayesian
-        logger.info(f"Training Bayesian for {combo_name}")
-        bayesian_model = GPUBayesianEnsemble(
-            input_dim=X.shape[1], device=device, batch_size=32
-        )
-        bayesian_model.train(X, y)
-        bayesian_mean, bayesian_std = bayesian_model.predict(X)
+            # Clear CUDA cache after TFT
+            torch.cuda.empty_cache()
 
-        # Clear CUDA cache after Bayesian
-        torch.cuda.empty_cache()
+            # Bayesian
+            logger.info(f"Training Bayesian for {combo_name}")
+            bayesian_model = GPUBayesianEnsemble(
+                input_dim=X.shape[1], device=device, batch_size=32
+            )
+            bayesian_model.train(X, y)
+            bayesian_mean, bayesian_std = bayesian_model.predict(X)
 
-        # Store results
-        result = {
-            "prophet": {
-                "yhat": prophet_forecast["yhat"].tolist(),
-                "yhat_lower": prophet_forecast["yhat_lower"].tolist(),
-                "yhat_upper": prophet_forecast["yhat_upper"].tolist(),
-                "metrics": evaluate_predictions(y, prophet_forecast["yhat"]),
-            },
-            "tft": {
-                "yhat": tft_preds.tolist(),
-                "metrics": evaluate_predictions(y, tft_preds),
-            },
-            "bayesian": {
-                "yhat": bayesian_mean.tolist(),
-                "uncertainty": bayesian_std.tolist(),
-                "metrics": evaluate_predictions(y, bayesian_mean),
-            },
-        }
+            # Clear CUDA cache after Bayesian
+            torch.cuda.empty_cache()
 
-        # Log metrics
-        logger.info(f"Results for {combo_name} on GPU {gpu_id}:")
-        logger.info(f"Prophet MAPE: {result['prophet']['metrics']['mape']:.2f}%")
-        logger.info(f"TFT MAPE: {result['tft']['metrics']['mape']:.2f}%")
-        logger.info(f"Bayesian MAPE: {result['bayesian']['metrics']['mape']:.2f}%")
+            # Inverse transform predictions
+            prophet_forecast_orig = (
+                prophet_forecast.copy()
+            )  # Prophet already in original scale
+            tft_preds_orig = scaler.inverse_transform(
+                tft_preds.reshape(-1, 1)
+            ).flatten()
+            bayesian_mean_orig = scaler.inverse_transform(
+                bayesian_mean.reshape(-1, 1)
+            ).flatten()
+            bayesian_std_orig = bayesian_std * scaler.scale_[0]  # Scale the uncertainty
 
-        return combo_name, result
+            # Store results
+            result = {
+                "prophet": {
+                    "yhat": prophet_forecast_orig["yhat"].tolist(),
+                    "yhat_lower": prophet_forecast_orig["yhat_lower"].tolist(),
+                    "yhat_upper": prophet_forecast_orig["yhat_upper"].tolist(),
+                    "metrics": evaluate_predictions(
+                        df["y"].values, prophet_forecast_orig["yhat"]
+                    ),
+                },
+                "tft": {
+                    "yhat": tft_preds_orig.tolist(),
+                    "metrics": evaluate_predictions(df["y"].values, tft_preds_orig),
+                },
+                "bayesian": {
+                    "yhat": bayesian_mean_orig.tolist(),
+                    "uncertainty": bayesian_std_orig.tolist(),
+                    "metrics": evaluate_predictions(df["y"].values, bayesian_mean_orig),
+                },
+            }
+
+            # Log metrics
+            logger.info(f"Results for {combo_name} on GPU {gpu_id}:")
+            logger.info(f"Prophet MAPE: {result['prophet']['metrics']['mape']:.2f}%")
+            logger.info(f"TFT MAPE: {result['tft']['metrics']['mape']:.2f}%")
+            logger.info(f"Bayesian MAPE: {result['bayesian']['metrics']['mape']:.2f}%")
+
+            return combo_name, result
+
+        except Exception as e:
+            logger.error(f"Model training failed for {combo_name}: {str(e)}")
+            torch.cuda.empty_cache()
+            raise
 
     except Exception as e:
         logger.error(

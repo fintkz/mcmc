@@ -103,6 +103,14 @@ class GPUBayesianEnsemble:
             lagged[lag:] = target_column[:-lag]
             lagged_features.append(lagged)
 
+        # Concatenate all features
+        temporal_features = np.hstack(
+            [day_sin, day_cos, week_sin, week_cos, *lagged_features]
+        )
+
+        # Combine with original features
+        return np.hstack([X, temporal_features])
+
     def train(self, X, y, epochs=800, num_samples=10):
         """Train the ensemble of Bayesian neural networks"""
         # Add temporal features
