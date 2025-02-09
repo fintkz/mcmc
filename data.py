@@ -149,15 +149,22 @@ class SyntheticDataGenerator:
                 freq='D'
             )
 
+            # Convert to Series for datetime accessors
+            dates_series = pd.Series(dates)
             # Create temporal features (similar fix needed here)
             temporal_features = torch.stack([
-                torch.sin(2 * np.pi * torch.tensor(dates.dt.dayofyear.values, dtype=torch.float32) / 365),
-                torch.cos(2 * np.pi * torch.tensor(dates.dt.dayofyear.values, dtype=torch.float32) / 365),
-                torch.sin(2 * np.pi * torch.tensor(dates.dt.isocalendar().week.values, dtype=torch.float32) / 52),
-                torch.cos(2 * np.pi * torch.tensor(dates.dt.isocalendar().week.values, dtype=torch.float32) / 52),
-                torch.sin(2 * np.pi * torch.tensor(dates.dt.month.values, dtype=torch.float32) / 12),
-                torch.cos(2 * np.pi * torch.tensor(dates.dt.month.values, dtype=torch.float32) / 12)
-            ], dim=1)  # Use dim=1 for temporal_features dimension
+            # Day of year features
+            torch.sin(2 * np.pi * torch.tensor(dates_series.dt.dayofyear.values, dtype=torch.float32) / 365),
+            torch.cos(2 * np.pi * torch.tensor(dates_series.dt.dayofyear.values, dtype=torch.float32) / 365),
+            
+            # Week features
+            torch.sin(2 * np.pi * torch.tensor(dates_series.dt.isocalendar().week.values, dtype=torch.float32) / 52),
+            torch.cos(2 * np.pi * torch.tensor(dates_series.dt.isocalendar().week.values, dtype=torch.float32) / 52),
+            
+            # Month features
+            torch.sin(2 * np.pi * torch.tensor(dates_series.dt.month.values, dtype=torch.float32) / 12),
+            torch.cos(2 * np.pi * torch.tensor(dates_series.dt.month.values, dtype=torch.float32) / 12)
+        ], dim=1)  # Use dim=1 for temporal_features dimension
             
             # Now refine the names
             temporal_features = temporal_features.refine_names('time', 'temporal_features')
@@ -182,7 +189,7 @@ class SyntheticDataGenerator:
                 features=features,                    # [time, features]
                 temporal=temporal_features,           # [time, temporal_features]
                 target=final_demand,                 # [time]
-                dates=pd.Series(dates),
+                dates=dates_series,
                 feature_dates=feature_dates
             )
 
