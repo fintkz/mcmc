@@ -31,18 +31,25 @@ class BayesianLinear(nn.Module):
         nn.init.constant_(self.bias_rho, -3)
         
     def forward(self, x: torch.Tensor, sample: bool = False) -> torch.Tensor:
-        """Forward pass with reparameterization trick"""
-        x = x.rename(None)  # Remove names for operations
+        """Forward pass with proper tensor name handling"""
+        # Remove names for operations
+        x = x.rename(None)
         
-        if sample:
-            weight = self.weight_mu + torch.randn_like(self.weight_mu) * torch.exp(self.weight_rho)
-            bias = self.bias_mu + torch.randn_like(self.bias_mu) * torch.exp(self.bias_rho)
-        else:
-            weight = self.weight_mu
-            bias = self.bias_mu
-            
-        out = F.linear(x, weight, bias)
-        return out.refine_names('batch', 'features')
+        # Validate input dimension
+        if x.size(-1) != self.input_dim:
+            raise ValueError(f"Expected {self.input_dim} input features, got {x.size(-1)}")
+
+        # Hidden layers
+        for layer in self.hidden_layers:
+            x = layer(x, sample)  # BayesianLinear already handles unnamed tensors
+            x = F.elu(x.rename(None))  # Explicitly remove names before ELU
+            x = self.dropout(x)  # Dropout works on unnamed tensors
+        
+        # Output layer
+        output = self.output_layer(x, sample)
+        
+        # Restore names and reshape to match expected dimensions
+        return output.squeeze(-1).refine_names('batch')
 
 
 class BayesianNetwork(nn.Module):
