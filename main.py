@@ -66,7 +66,7 @@ def prepare_feature_combinations(df, features):
         all_combinations.extend(combinations(features, r))
     return list(all_combinations)
 
-def train_combination(combo, df, features, temporal_features, gpu_id, logger):
+def train_combination(combo, gpu_id, features, temporal_features, df, logger):
     """Train models for a specific feature combination"""
     try:
         # Set GPU device
@@ -185,9 +185,9 @@ def train_and_evaluate_all_models(df, feature_dates, logger):
     # Create partial function with fixed arguments
     train_func = partial(
         train_combination,
-        df=df,
         features=features,
         temporal_features=temporal_features,
+        df=df,
         logger=logger
     )
     
@@ -196,11 +196,11 @@ def train_and_evaluate_all_models(df, feature_dates, logger):
     
     # Create process pool
     with mp.Pool(num_gpus) as pool:
-        # Distribute combinations across GPUs
-        gpu_assignments = [(combo, i % num_gpus) for i, combo in enumerate(combinations)]
+        # Create arguments list with only combo and gpu_id
+        args = [(combo, i % num_gpus) for i, combo in enumerate(combinations)]
         
-        # Map combinations to processes
-        combo_results = pool.starmap(train_func, gpu_assignments)
+        # Map combinations to processes using only combo and gpu_id
+        combo_results = pool.starmap(train_func, args)
         
         # Collect results
         for combo_name, result in combo_results:
