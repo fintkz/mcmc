@@ -1,9 +1,9 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from torch.optim.lr_scheduler import OneCycleLR
 from torch.utils.data import TensorDataset, DataLoader
 from utils import peak_weighted_loss
+import numpy as np
 
 
 class TimeDistributed(nn.Module):
@@ -160,13 +160,13 @@ class TFTModel:
             if y is not None:
                 y_seqs.append(y[i + self.seq_length - 1])
 
-        # Stack sequences
-        X_seq = torch.stack(X_seqs, dim='batch')  # [batch, time, features]
+        # Stack sequences using integer dims first, then refine names
+        X_seq = torch.stack(X_seqs, dim=0).refine_names('batch', 'time', 'features')
 
         if y is not None:
-            y_seq = torch.stack(y_seqs, dim='batch')  # [batch]
+            y_seq = torch.stack(y_seqs, dim=0).refine_names('batch')
             return X_seq, y_seq
-        return X_seq
+        return X_seq  # Return X_seq when y is None
 
     def train(self, X: torch.Tensor, y: torch.Tensor, epochs: int = 400):
         """Train the model with named tensors"""
