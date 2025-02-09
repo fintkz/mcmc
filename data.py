@@ -112,26 +112,25 @@ class SyntheticDataGenerator:
         if self.periods < 365:
             raise ValueError("Periods should be at least 365 for meaningful seasonal patterns")
 
-        # Generate base demand
-        base_demand = self.generate_base_demand()
-        
-        # Validate base demand
-        if torch.any(torch.isnan(base_demand)) or torch.any(torch.isinf(base_demand)):
-            raise ValueError("Invalid values in base demand generation")
-
         try:
+            # Generate base demand
+            base_demand = self.generate_base_demand()
+            
             # Generate all effects and their indicators
             promo_effect, promo_indicator = self.add_promotions(base_demand)
             weather_effect, weather_indicator = self.add_weather_effects(base_demand)
             
-            # Stack all feature indicators
+            # Stack all feature indicators (using integer dim first)
             features = torch.stack([
-                promo_indicator,
-                weather_indicator,
-                torch.zeros(self.periods).refine_names('time'),  # sports placeholder
-                torch.zeros(self.periods).refine_names('time'),  # school placeholder
-                torch.zeros(self.periods).refine_names('time')   # holiday placeholder
-            ], dim='features')
+                promo_indicator.rename(None),
+                weather_indicator.rename(None),
+                torch.zeros(self.periods),  # sports placeholder
+                torch.zeros(self.periods),  # school placeholder
+                torch.zeros(self.periods)   # holiday placeholder
+            ], dim=1)  # Use dim=1 for features dimension
+            
+            # Now refine the names
+            features = features.refine_names('time', 'features')
             
             # Combine all effects
             final_demand = base_demand + promo_effect + weather_effect
@@ -143,42 +142,52 @@ class SyntheticDataGenerator:
                 final_demand.rename(None) + noise
             ).refine_names('time')
 
+            # Create dates
+            dates = pd.date_range(
+                start=self.start_date,
+                periods=self.periods,
+                freq='D'
+            )
+
+            # Create temporal features (similar fix needed here)
+            temporal_features = torch.stack([
+                torch.sin(2 * np.pi * torch.tensor(dates.dt.dayofyear.values, dtype=torch.float32) / 365),
+                torch.cos(2 * np.pi * torch.tensor(dates.dt.dayofyear.values, dtype=torch.float32) / 365),
+                torch.sin(2 * np.pi * torch.tensor(dates.dt.isocalendar().week.values, dtype=torch.float32) / 52),
+                torch.cos(2 * np.pi * torch.tensor(dates.dt.isocalendar().week.values, dtype=torch.float32) / 52),
+                torch.sin(2 * np.pi * torch.tensor(dates.dt.month.values, dtype=torch.float32) / 12),
+                torch.cos(2 * np.pi * torch.tensor(dates.dt.month.values, dtype=torch.float32) / 12)
+            ], dim=1)  # Use dim=1 for temporal_features dimension
+            
+            # Now refine the names
+            temporal_features = temporal_features.refine_names('time', 'temporal_features')
+
+            # Store feature dates for reference
+            feature_dates = {
+                'promotions': promo_indicator.rename(None).nonzero().squeeze().tolist(),
+                'weather': weather_indicator.rename(None).nonzero().squeeze().tolist(),
+                'sports': [],
+                'school': [],
+                'holidays': []
+            }
+
+            # Validate final shapes
+            assert features.size('time') == self.periods
+            assert features.size('features') == len(self.feature_names)
+            assert temporal_features.size('time') == self.periods
+            assert temporal_features.size('temporal_features') == len(self.temporal_feature_names)
+            assert final_demand.size('time') == self.periods
+
+            return DatasetFeatures(
+                features=features,                    # [time, features]
+                temporal=temporal_features,           # [time, temporal_features]
+                target=final_demand,                 # [time]
+                dates=pd.Series(dates),
+                feature_dates=feature_dates
+            )
+
         except Exception as e:
             raise ValueError(f"Error generating features: {str(e)}")
-
-        # Create dates
-        dates = pd.date_range(
-            start=self.start_date,
-            periods=self.periods,
-            freq='D'
-        )
-
-        # Create temporal features
-        temporal_features = self.create_temporal_features(pd.Series(dates))
-
-        # Store feature dates for reference
-        feature_dates = {
-            'promotions': promo_indicator.rename(None).nonzero().squeeze().tolist(),
-            'weather': weather_indicator.rename(None).nonzero().squeeze().tolist(),
-            'sports': [],
-            'school': [],
-            'holidays': []
-        }
-
-        # Validate final shapes
-        assert features.size('time') == self.periods
-        assert features.size('features') == len(self.feature_names)
-        assert temporal_features.size('time') == self.periods
-        assert temporal_features.size('temporal_features') == len(self.temporal_feature_names)
-        assert final_demand.size('time') == self.periods
-
-        return DatasetFeatures(
-            features=features,                    # [time, features]
-            temporal=temporal_features,           # [time, temporal_features]
-            target=final_demand,                 # [time]
-            dates=pd.Series(dates),
-            feature_dates=feature_dates
-        )
 
 
 if __name__ == "__main__":
