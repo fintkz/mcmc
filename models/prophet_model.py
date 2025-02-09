@@ -13,6 +13,23 @@ class ProphetModel:
         )
         self.has_external = False
 
+    def train_and_predict(self, dates, y):
+        """Train the model and generate predictions"""
+        # Create DataFrame in Prophet format
+        df = pd.DataFrame({
+            'ds': dates,
+            'y': y
+        })
+        
+        # Fit the model
+        self.model.fit(df)
+        
+        # Make predictions
+        future = pd.DataFrame({'ds': dates})
+        forecast = self.model.predict(future)
+        
+        return forecast['yhat'].values
+
     def add_external_features(self, feature_names):
         """Add external regressors to Prophet"""
         for feature in feature_names:
