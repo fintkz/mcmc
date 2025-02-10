@@ -81,13 +81,13 @@ class BayesianNetwork(nn.Module):
         self.dropout = nn.Dropout(0.1)
 
     def forward(self, x: torch.Tensor, sample: bool = False) -> torch.Tensor:
-        """Forward pass with proper tensor name handling"""
-        # Store original names if any
-        original_names = x.names
-
-        # Remove names for operations
-        x = x.rename(None)
-
+        """Forward pass
+        Args:
+            x: Input tensor of shape [batch_size, features]
+            sample: Whether to sample weights
+        Returns:
+            Tensor of shape [batch_size]
+        """
         # Validate input dimension
         if x.size(-1) != self.input_dim:
             raise ValueError(
@@ -96,24 +96,13 @@ class BayesianNetwork(nn.Module):
 
         # Hidden layers
         for layer in self.hidden_layers:
-            x = layer(
-                x, sample
-            )  # BayesianLinear already handles unnamed tensors
-            x = F.elu(x)  # Already unnamed
+            x = layer(x, sample)
+            x = F.elu(x)
             x = self.dropout(x)
 
         # Output layer
         output = self.output_layer(x, sample)
-
-        # Restore appropriate names based on the output shape
-        # The output will have shape [batch_size, 1] before squeezing
-        output = output.squeeze(-1)
-
-        # If the input had a batch dimension, name it accordingly
-        if len(original_names) > 0 and "batch" in original_names:
-            output = output.refine_names("batch")
-
-        return output
+        return output.squeeze(-1)
 
 
 class GPUBayesianEnsemble(nn.Module):
@@ -133,6 +122,13 @@ class GPUBayesianEnsemble(nn.Module):
         self.batch_size = batch_size
         self.models = []
 
+    def mape_loss(
+        self, pred: torch.Tensor, target: torch.Tensor
+    ) -> torch.Tensor:
+        """Calculate MAPE loss that works with autograd"""
+        epsilon = 1e-8
+        return torch.mean(torch.abs((target - pred) / (target + epsilon))) * 100
+
     def train(
         self,
         X: torch.Tensor,
@@ -140,15 +136,13 @@ class GPUBayesianEnsemble(nn.Module):
         epochs: int = 400,
         num_samples: int = 10,
     ):
-        """Train the ensemble with named tensors"""
-        # Store original names
-        X_names = X.names
-        y_names = y.names
-
-        # Remove names before creating dataset
-        X = X.rename(None)
-        y = y.rename(None)
-
+        """Train the ensemble
+        Args:
+            X: Input tensor of shape [time, features]
+            y: Target tensor of shape [time]
+            epochs: Number of epochs
+            num_samples: Number of MC samples per forward pass
+        """
         # Create dataset
         dataset = TensorDataset(X, y)
         loader = DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
@@ -162,11 +156,13 @@ class GPUBayesianEnsemble(nn.Module):
                 model = BayesianNetwork(self.input_dim).to(self.device)
 
                 optimizer = torch.optim.AdamW(
-                    model.parameters(), lr=1e-4, weight_decay=0.01
+                    model.parameters(),
+                    lr=1e-4,
+                    weight_decay=0.01,
                 )
 
                 num_steps = len(loader) * epochs
-                warmup_steps = num_steps // 10
+                warmup_steps = num_steps // 5  # 20% warmup
 
                 def lr_lambda(step):
                     if step < warmup_steps:
@@ -198,14 +194,15 @@ class GPUBayesianEnsemble(nn.Module):
                         batch_losses = []
                         for _ in range(num_samples):
                             pred = model(batch_X, sample=True)
-                            loss = peak_weighted_loss(pred, batch_y)
+                            loss = self.mape_loss(pred, batch_y)
                             batch_losses.append(loss)
 
                         loss = torch.stack(batch_losses).mean()
                         loss.backward()
 
                         torch.nn.utils.clip_grad_norm_(
-                            model.parameters(), max_norm=1.0
+                            model.parameters(),
+                            max_norm=1.0,
                         )
 
                         optimizer.step()
@@ -215,7 +212,7 @@ class GPUBayesianEnsemble(nn.Module):
 
                     if (epoch + 1) % 20 == 0:
                         print(
-                            f"Model {i + 1}/{self.n_models}, Epoch {epoch + 1}/{epochs}, Loss: {epoch_loss:.4f}"
+                            f"Model {i + 1}/{self.n_models}, Epoch {epoch + 1}/{epochs}, MAPE Loss: {epoch_loss:.4f}%"
                         )
 
                     if epoch_loss < best_loss:
@@ -241,13 +238,13 @@ class GPUBayesianEnsemble(nn.Module):
     def predict(
         self, X: torch.Tensor, num_samples: int = 100
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Generate predictions with uncertainty estimates"""
-        # Store original names
-        X_names = X.names
-
-        # Remove names for operations
-        X = X.rename(None)
-
+        """Generate predictions with uncertainty estimates
+        Args:
+            X: Input tensor of shape [time, features]
+            num_samples: Number of MC samples
+        Returns:
+            Tuple of (mean, std) tensors of shape [time]
+        """
         # Set all models to evaluation mode
         for model in self.models:
             model.eval()
@@ -268,7 +265,6 @@ class GPUBayesianEnsemble(nn.Module):
                 all_preds.append(model_preds)
 
             ensemble_preds = torch.stack(all_preds, dim=0)
-
             all_predictions = ensemble_preds.reshape(
                 -1, ensemble_preds.size(-1)
             )
@@ -276,13 +272,8 @@ class GPUBayesianEnsemble(nn.Module):
             mean = all_predictions.mean(dim=0)
             std = all_predictions.std(dim=0)
 
-            # Restore appropriate names
-            if "batch" in X_names:
-                mean = mean.refine_names("batch")
-                std = std.refine_names("batch")
-
-            return mean, std
+            return mean.cpu(), std.cpu()
 
     def forward(self, X: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Forward pass for the ensemble"""
+        """Forward pass wrapper"""
         return self.predict(X)
