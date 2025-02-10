@@ -161,21 +161,60 @@ def process_single_model(combo: tuple, data: DatasetFeatures, logger: logging.Lo
                     data.dates,
                     target.rename(None).cpu().numpy()
                 )
+        
+        elif model_name == "bayesian":
+            # Initialize model
+            input_dim = features.size('features') if combo else 1
+            model = GPUBayesianEnsemble(input_dim=input_dim, device=str(device))
             
-            # Evaluate predictions
-            metrics = evaluate_predictions(
-                target.rename(None).cpu().numpy(),
-                preds
-            )
-            logger.info(f"\nResults for {combo_name}:")
-            logger.info(f"  RMSE: {metrics['rmse']:.2f}")
-            logger.info(f"  MAPE: {metrics['mape']:.2f}%")
+            if combo:
+                logger.info(f"\nTraining Bayesian model with features: {combo}")
+                preds = model.train_and_predict(features, target)
+            else:
+                # For baseline, use time index as feature
+                time_feature = torch.arange(len(target), device=device).float().reshape(-1, 1)
+                time_feature = time_feature.refine_names('time', 'features')
+                logger.info("\nTraining baseline Bayesian model (time only)")
+                preds = model.train_and_predict(time_feature, target)
             
-            result = {
-                "predictions": preds.tolist(),
-                "metrics": metrics
-            }
+            # Move predictions to CPU for evaluation
+            preds = preds.cpu().numpy()
             
+        elif model_name == "tft":
+            # Initialize model
+            input_dim = features.size('features') if combo else 1
+            model = TFTModel(num_features=input_dim, device=str(device))
+            
+            if combo:
+                logger.info(f"\nTraining TFT model with features: {combo}")
+                preds = model.train_and_predict(features, target)
+            else:
+                # For baseline, use time index as feature
+                time_feature = torch.arange(len(target), device=device).float().reshape(-1, 1)
+                time_feature = time_feature.refine_names('time', 'features')
+                logger.info("\nTraining baseline TFT model (time only)")
+                preds = model.train_and_predict(time_feature, target)
+            
+            # Move predictions to CPU for evaluation
+            preds = preds.cpu().numpy()
+        
+        else:
+            raise ValueError(f"Unknown model type: {model_name}")
+        
+        # Evaluate predictions
+        metrics = evaluate_predictions(
+            target.rename(None).cpu().numpy(),
+            preds
+        )
+        logger.info(f"\nResults for {combo_name}:")
+        logger.info(f"  RMSE: {metrics['rmse']:.2f}")
+        logger.info(f"  MAPE: {metrics['mape']:.2f}%")
+        
+        result = {
+            "predictions": preds.tolist(),
+            "metrics": metrics
+        }
+        
         return combo_name, result
         
     except Exception as e:
