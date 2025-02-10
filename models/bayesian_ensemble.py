@@ -1,279 +1,195 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.data import TensorDataset, DataLoader
+from torch.distributions import Normal
 import numpy as np
-from utils import peak_weighted_loss
-from typing import Tuple
-
-
-class BayesianLinear(nn.Module):
-    def __init__(self, in_features: int, out_features: int):
-        super().__init__()
-        self.in_features = in_features  # Store input dimension
-        self.out_features = out_features
-
-        # Weight parameters
-        self.weight_mu = nn.Parameter(torch.zeros(out_features, in_features))
-        self.weight_rho = nn.Parameter(torch.zeros(out_features, in_features))
-
-        # Bias parameters
-        self.bias_mu = nn.Parameter(torch.zeros(out_features))
-        self.bias_rho = nn.Parameter(torch.zeros(out_features))
-
-        # Initialize parameters
-        self.reset_parameters()
-
-    def reset_parameters(self):
-        nn.init.kaiming_normal_(
-            self.weight_mu, mode="fan_in", nonlinearity="relu"
-        )
-        nn.init.constant_(self.weight_rho, -3)
-        nn.init.constant_(self.bias_mu, 0.0)
-        nn.init.constant_(self.bias_rho, -3)
-
-    def forward(self, x: torch.Tensor, sample: bool = False) -> torch.Tensor:
-        """Forward pass with reparameterization trick"""
-        # Ensure tensor is unnamed
-        x = x.rename(None)
-
-        # Validate input dimension
-        if (
-            x.size(-1) != self.in_features
-        ):  # Use in_features instead of input_dim
-            raise ValueError(
-                f"Expected {self.in_features} input features, got {x.size(-1)}"
-            )
-
-        if sample:
-            weight = self.weight_mu + torch.randn_like(
-                self.weight_mu
-            ) * torch.exp(self.weight_rho)
-            bias = self.bias_mu + torch.randn_like(self.bias_mu) * torch.exp(
-                self.bias_rho
-            )
-        else:
-            weight = self.weight_mu
-            bias = self.bias_mu
-
-        return F.linear(x, weight, bias)  # Return unnamed tensor
+from typing import Tuple, List
 
 
 class BayesianNetwork(nn.Module):
-    def __init__(self, input_dim: int, hidden_sizes: list = [256, 128, 64]):
-        super().__init__()
-        self.input_dim = input_dim
-        self.hidden_sizes = hidden_sizes
+    """Bayesian Neural Network with Gaussian variational inference"""
 
-        self.hidden_layers = nn.ModuleList()
-
-        # Input layer
-        self.hidden_layers.append(BayesianLinear(input_dim, hidden_sizes[0]))
-
-        # Hidden layers
-        for i in range(len(hidden_sizes) - 1):
-            self.hidden_layers.append(
-                BayesianLinear(hidden_sizes[i], hidden_sizes[i + 1])
-            )
-
-        # Output layer
-        self.output_layer = BayesianLinear(hidden_sizes[-1], 1)
-        self.dropout = nn.Dropout(0.1)
-
-    def forward(self, x: torch.Tensor, sample: bool = False) -> torch.Tensor:
-        """Forward pass
-        Args:
-            x: Input tensor of shape [batch_size, features]
-            sample: Whether to sample weights
-        Returns:
-            Tensor of shape [batch_size]
-        """
-        # Validate input dimension
-        if x.size(-1) != self.input_dim:
-            raise ValueError(
-                f"Expected {self.input_dim} input features, got {x.size(-1)}"
-            )
-
-        # Hidden layers
-        for layer in self.hidden_layers:
-            x = layer(x, sample)
-            x = F.elu(x)
-            x = self.dropout(x)
-
-        # Output layer
-        output = self.output_layer(x, sample)
-        return output.squeeze(-1)
-
-
-class GPUBayesianEnsemble(nn.Module):
     def __init__(
         self,
         input_dim: int,
-        n_models: int = 10,
-        device: str = None,
-        batch_size: int = 128,
+        hidden_dim: int = 64,
+        n_hidden: int = 2,
+        dropout: float = 0.1,
     ):
         super().__init__()
-        self.device = device or torch.device(
-            "cuda" if torch.cuda.is_available() else "cpu"
-        )
         self.input_dim = input_dim
-        self.n_models = n_models
-        self.batch_size = batch_size
-        self.models = []
+        self.hidden_dim = hidden_dim
+        self.n_hidden = n_hidden
 
-    def mape_loss(
-        self, pred: torch.Tensor, target: torch.Tensor
+        # Initialize layers
+        layers = []
+        # Input layer
+        layers.extend(
+            [nn.Linear(input_dim, hidden_dim), nn.ReLU(), nn.Dropout(dropout)]
+        )
+        # Hidden layers
+        for _ in range(n_hidden - 1):
+            layers.extend(
+                [
+                    nn.Linear(hidden_dim, hidden_dim),
+                    nn.ReLU(),
+                    nn.Dropout(dropout),
+                ]
+            )
+        # Output layer - mean and log variance
+        self.network = nn.Sequential(*layers)
+        self.mean_head = nn.Linear(hidden_dim, 1)
+        self.logvar_head = nn.Linear(hidden_dim, 1)
+
+    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Forward pass through the network
+
+        Args:
+            x: Input tensor of shape [batch_size, input_dim]
+
+        Returns:
+            Tuple of:
+                mean: Predicted mean of shape [batch_size, 1]
+                logvar: Predicted log variance of shape [batch_size, 1]
+        """
+        features = self.network(x)
+        mean = self.mean_head(features)
+        logvar = self.logvar_head(features)
+        return mean, logvar
+
+    def sample_elbo(
+        self, x: torch.Tensor, y: torch.Tensor, n_samples: int = 1
     ) -> torch.Tensor:
-        """Calculate MAPE loss that works with autograd"""
-        epsilon = 1e-8
-        return torch.mean(torch.abs((target - pred) / (target + epsilon))) * 100
+        """Compute ELBO loss
+
+        Args:
+            x: Input tensor of shape [batch_size, input_dim]
+            y: Target tensor of shape [batch_size]
+            n_samples: Number of MC samples
+
+        Returns:
+            ELBO loss value
+        """
+        mean, logvar = self(x)
+        var = torch.exp(logvar)
+
+        # Compute KL divergence
+        kl_loss = -0.5 * torch.mean(1 + logvar - mean.pow(2) - var)
+
+        # Sample and compute log likelihood
+        dist = Normal(mean.squeeze(), var.sqrt().squeeze())
+        log_likely = dist.log_prob(y).mean()
+
+        return log_likely - kl_loss
+
+
+class GPUBayesianEnsemble:
+    """Ensemble of Bayesian Neural Networks"""
+
+    def __init__(
+        self,
+        input_dim: int,
+        n_networks: int = 5,
+        hidden_dim: int = 64,
+        n_hidden: int = 2,
+        device: str = "cuda",
+    ):
+        self.device = device
+        self.input_dim = input_dim
+        self.n_networks = n_networks
+
+        # Create ensemble of networks
+        self.networks = [
+            BayesianNetwork(
+                input_dim=input_dim, hidden_dim=hidden_dim, n_hidden=n_hidden
+            ).to(device)
+            for _ in range(n_networks)
+        ]
+
+        # Initialize optimizers
+        self.optimizers = [
+            torch.optim.Adam(net.parameters(), lr=0.001)
+            for net in self.networks
+        ]
 
     def train(
         self,
         X: torch.Tensor,
         y: torch.Tensor,
-        epochs: int = 400,
-        num_samples: int = 10,
+        epochs: int = 100,
+        batch_size: int = 64,
+        mc_samples: int = 10,
     ):
         """Train the ensemble
+
         Args:
             X: Input tensor of shape [time, features]
             y: Target tensor of shape [time]
-            epochs: Number of epochs
-            num_samples: Number of MC samples per forward pass
+            epochs: Number of training epochs
+            batch_size: Batch size for training
+            mc_samples: Number of Monte Carlo samples for ELBO
         """
-        # Create dataset
-        dataset = TensorDataset(X, y)
-        loader = DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
+        dataset = torch.utils.data.TensorDataset(X, y)
+        loader = torch.utils.data.DataLoader(
+            dataset, batch_size=batch_size, shuffle=True
+        )
 
-        # Clear existing models
-        self.models = []
+        for epoch in range(epochs):
+            epoch_loss = 0.0
+            batch_count = 0
 
-        try:
-            for i in range(self.n_models):
-                print(f"\nTraining model {i + 1}/{self.n_models}")
-                model = BayesianNetwork(self.input_dim).to(self.device)
+            for batch_x, batch_y in loader:
+                batch_x = batch_x.to(self.device)
+                batch_y = batch_y.to(self.device)
 
-                optimizer = torch.optim.AdamW(
-                    model.parameters(),
-                    lr=1e-4,
-                    weight_decay=0.01,
-                )
+                # Train each network
+                for net, opt in zip(self.networks, self.optimizers):
+                    opt.zero_grad()
+                    loss = -net.sample_elbo(batch_x, batch_y, mc_samples)
+                    loss.backward()
+                    torch.nn.utils.clip_grad_norm_(net.parameters(), 1.0)
+                    opt.step()
+                    epoch_loss += loss.item()
+                    batch_count += 1
 
-                num_steps = len(loader) * epochs
-                warmup_steps = num_steps // 5  # 20% warmup
-
-                def lr_lambda(step):
-                    if step < warmup_steps:
-                        return float(step) / float(max(1, warmup_steps))
-                    return 0.1 + 0.9 * (
-                        1.0
-                        - float(step - warmup_steps)
-                        / float(max(1, num_steps - warmup_steps))
-                    )
-
-                scheduler = torch.optim.lr_scheduler.LambdaLR(
-                    optimizer, lr_lambda
-                )
-
-                best_loss = float("inf")
-                patience = 20
-                patience_counter = 0
-
-                for epoch in range(epochs):
-                    model.train()
-                    epoch_loss = 0
-
-                    for batch_X, batch_y in loader:
-                        batch_X = batch_X.to(self.device)
-                        batch_y = batch_y.to(self.device)
-
-                        optimizer.zero_grad()
-
-                        batch_losses = []
-                        for _ in range(num_samples):
-                            pred = model(batch_X, sample=True)
-                            loss = self.mape_loss(pred, batch_y)
-                            batch_losses.append(loss)
-
-                        loss = torch.stack(batch_losses).mean()
-                        loss.backward()
-
-                        torch.nn.utils.clip_grad_norm_(
-                            model.parameters(),
-                            max_norm=1.0,
-                        )
-
-                        optimizer.step()
-                        scheduler.step()
-
-                        epoch_loss += loss.item()
-
-                    if (epoch + 1) % 20 == 0:
-                        print(
-                            f"Model {i + 1}/{self.n_models}, Epoch {epoch + 1}/{epochs}, MAPE Loss: {epoch_loss:.4f}%"
-                        )
-
-                    if epoch_loss < best_loss:
-                        best_loss = epoch_loss
-                        patience_counter = 0
-                    else:
-                        patience_counter += 1
-
-                    if patience_counter >= patience:
-                        print(
-                            f"Model {i + 1}/{self.n_models}: Early stopping at epoch {epoch}"
-                        )
-                        break
-
-                self.models.append(model)
-                torch.cuda.empty_cache()
-
-            print(f"Finished training {self.n_models} models")
-
-        finally:
-            torch.cuda.empty_cache()
+            if (epoch + 1) % 10 == 0:
+                avg_loss = epoch_loss / batch_count
+                print(f"Epoch {epoch + 1}/{epochs}, Loss: {avg_loss:.4f}")
 
     def predict(
-        self, X: torch.Tensor, num_samples: int = 100
+        self, X: torch.Tensor, n_samples: int = 100
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Generate predictions with uncertainty estimates
+        """Generate predictions with uncertainty
+
         Args:
             X: Input tensor of shape [time, features]
-            num_samples: Number of MC samples
+            n_samples: Number of MC samples for prediction
+
         Returns:
-            Tuple of (mean, std) tensors of shape [time]
+            Tuple of:
+                mean: Mean predictions of shape [time]
+                std: Standard deviation of predictions of shape [time]
         """
-        # Set all models to evaluation mode
-        for model in self.models:
-            model.eval()
+        all_preds = []
 
-        X = X.to(self.device)
-
-        with torch.no_grad():
-            all_preds = []
-
-            for model in self.models:
+        # Get predictions from each network
+        for net in self.networks:
+            net.eval()
+            with torch.no_grad():
                 batch_preds = []
-
-                for _ in range(num_samples):
-                    pred = model(X, sample=True)
+                for _ in range(n_samples):
+                    mean, logvar = net(X)
+                    var = torch.exp(logvar)
+                    pred = Normal(mean.squeeze(), var.sqrt().squeeze()).sample()
                     batch_preds.append(pred)
+                network_preds = torch.stack(batch_preds)
+                all_preds.append(network_preds)
 
-                model_preds = torch.stack(batch_preds, dim=0)
-                all_preds.append(model_preds)
+        # Stack predictions from all networks
+        all_preds = torch.stack(all_preds)  # [n_networks, n_samples, time]
 
-            ensemble_preds = torch.stack(all_preds, dim=0)
-            all_predictions = ensemble_preds.reshape(
-                -1, ensemble_preds.size(-1)
-            )
+        # Compute mean and standard deviation
+        mean_preds = all_preds.mean(dim=(0, 1))  # [time]
+        std_preds = all_preds.std(dim=(0, 1))  # [time]
 
-            mean = all_predictions.mean(dim=0)
-            std = all_predictions.std(dim=0)
-
-            return mean.cpu(), std.cpu()
-
-    def forward(self, X: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Forward pass wrapper"""
-        return self.predict(X)
+        return mean_preds.cpu(), std_preds.cpu()

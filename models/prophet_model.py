@@ -1,104 +1,84 @@
 from prophet import Prophet
 import pandas as pd
-import matplotlib.pyplot as plt
 import numpy as np
-from typing import List, Optional
+from typing import Optional, List, Union
 
 
 class ProphetModel:
-    def __init__(self, seasonality_mode="multiplicative"):
+    """Prophet model wrapper for time series forecasting"""
+
+    def __init__(self, changepoint_prior_scale: float = 0.05):
+        """Initialize Prophet model
+
+        Args:
+            changepoint_prior_scale: Flexibility of the trend (0.05 by default)
+        """
         self.model = Prophet(
+            changepoint_prior_scale=changepoint_prior_scale,
             yearly_seasonality=True,
             weekly_seasonality=True,
             daily_seasonality=False,
-            seasonality_mode=seasonality_mode,
         )
-        self.has_external = False
 
-    def train_and_predict(self, dates: pd.DatetimeIndex, y: np.ndarray, features: Optional[np.ndarray] = None, feature_names: Optional[List[str]] = None) -> np.ndarray:
-        """Train the model and generate predictions"""
+    def train_and_predict(
+        self,
+        dates: pd.Series,
+        y: np.ndarray,
+        features: Optional[np.ndarray] = None,
+        feature_names: Optional[List[str]] = None,
+    ) -> np.ndarray:
+        """Train model and generate predictions
 
-        # Should validate inputs and handle potential errors
+        Args:
+            dates: Series of dates
+            y: Target values array of shape [time]
+            features: Optional feature array of shape [time, n_features]
+            feature_names: Optional list of feature names
+
+        Returns:
+            Array of predictions with shape [time]
+        """
+        # Validate inputs
         if len(dates) != len(y):
-            raise ValueError("dates and y must have the same length")
-        
-        # Should handle NaN/Inf values that could break Prophet
-        if np.any(np.isnan(y)) or np.any(np.isinf(y)):
-            raise ValueError("Input contains NaN or Inf values")
+            raise ValueError(
+                f"dates and y must have same length, got {len(dates)} and {len(y)}"
+            )
+        if features is not None:
+            if len(features) != len(y):
+                raise ValueError(
+                    f"features and y must have same length, got {len(features)} and {len(y)}"
+                )
+            if feature_names is None:
+                feature_names = [
+                    f"feature_{i}" for i in range(features.shape[1])
+                ]
+            if len(feature_names) != features.shape[1]:
+                raise ValueError(
+                    f"Number of feature names ({len(feature_names)}) must match number of features ({features.shape[1]})"
+                )
 
-        # Create DataFrame in Prophet format
-        df = pd.DataFrame({
-            'ds': dates,
-            'y': y
-        })
-        
-        # Add features as regressors if provided
-        if features is not None and feature_names is not None:
-            if features.shape[0] != len(dates):
-                raise ValueError("Number of feature rows must match number of dates")
-            if features.shape[1] != len(feature_names):
-                raise ValueError("Number of feature columns must match number of feature names")
-            
-            # Add each feature as a regressor
-            for i, name in enumerate(feature_names):
-                regressor_name = f'feature_{name}'
-                df[regressor_name] = features[:, i]
-                if not self.has_external:
-                    self.add_external_features([regressor_name])
-        
-        # Fit the model
-        self.model.fit(df)
-        
-        # Make predictions
-        future = pd.DataFrame({'ds': dates})
-        if features is not None and feature_names is not None:
-            for i, name in enumerate(feature_names):
-                future[f'feature_{name}'] = features[:, i]
-        
-        forecast = self.model.predict(future)
-        
-        return forecast['yhat'].values
+        try:
+            # Prepare training data
+            df = pd.DataFrame({"ds": dates, "y": y})
 
-    def add_external_features(self, feature_names: List[str]) -> None:
-        """Add external regressors to Prophet"""
-        for feature in feature_names:
-            if feature in ["ds", "y"]:
-                raise ValueError(f"Cannot use reserved name {feature} as external feature")
-            self.model.add_regressor(feature)
-        self.has_external = bool(feature_names)  # More accurate than just True
+            # Add features if provided
+            if features is not None:
+                for i, name in enumerate(feature_names):
+                    df[name] = features[:, i]
+                    self.model.add_regressor(name)
 
-    def fit(self, df):
-        """
-        Fit Prophet model
-        df must contain 'ds' (dates) and 'y' (target) columns
-        """
-        self.model.fit(df)
+            # Fit model
+            self.model.fit(df)
 
-    def predict(self, df):
-        """Make predictions"""
-        forecast = self.model.predict(df)
-        return forecast
+            # Generate predictions
+            future = pd.DataFrame({"ds": dates})
+            if features is not None:
+                for i, name in enumerate(feature_names):
+                    future[name] = features[:, i]
 
-    def plot_components(self, forecast):
-        """Plot Prophet's decomposition"""
-        self.model.plot_components(forecast)
-        plt.tight_layout()
+            forecast = self.model.predict(future)
+            return forecast["yhat"].values
 
-    def plot_prediction(self, forecast, actual=None):
-        """Plot predictions vs actuals"""
-        fig = plt.figure(figsize=(15, 6))
-        plt.plot(forecast["ds"], forecast["yhat"], label="Prediction", color="blue")
-        plt.fill_between(
-            forecast["ds"],
-            forecast["yhat_lower"],
-            forecast["yhat_upper"],
-            color="blue",
-            alpha=0.2,
-            label="Uncertainty",
-        )
-        if actual is not None:
-            plt.plot(actual["ds"], actual["y"], label="Actual", color="red", alpha=0.5)
-        plt.title("Prophet Forecast with Uncertainty Intervals")
-        plt.legend()
-        plt.grid(True, alpha=0.3)
-        return fig
+        except Exception as e:
+            print(f"Error in Prophet model: {str(e)}")
+            raise
