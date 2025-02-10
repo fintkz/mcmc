@@ -184,18 +184,39 @@ class TFTModel:
             epochs: Number of training epochs
             early_stopping: Whether to use early stopping
         """
+        # Debug dimensions
+        print(f"Input X shape: {X.shape}")
+        print(
+            f"Model expected features: {self.model.module.num_features if isinstance(self.model, DDP) else self.model.num_features}"
+        )
+
         # Validate input dimensions
-        if (
-            X.size(1) != self.model.module.num_features
+        if X.dim() != 2:
+            raise ValueError(f"Expected 2D input tensor, got shape {X.shape}")
+
+        expected_features = (
+            self.model.module.num_features
             if isinstance(self.model, DDP)
             else self.model.num_features
-        ):
+        )
+        if X.size(1) != expected_features:
             raise ValueError(
-                f"Expected {self.model.module.num_features if isinstance(self.model, DDP) else self.model.num_features} features, got {X.size(1)}"
+                f"Feature dimension mismatch. Model expects {expected_features} features, got tensor with shape {X.shape}"
             )
+
+        # Ensure y is 1D
+        if y.dim() > 1:
+            y = y.squeeze()
+
+        if y.dim() != 1:
+            raise ValueError(f"Expected 1D target tensor, got shape {y.shape}")
 
         # Create sequences
         X_seq, y_seq = self.create_sequences(X, y)
+
+        # Debug sequence shapes
+        print(f"Sequence X shape: {X_seq.shape}")
+        print(f"Sequence y shape: {y_seq.shape}")
 
         # Create dataset and distributed sampler
         dataset = TensorDataset(X_seq, y_seq)
@@ -224,10 +245,13 @@ class TFTModel:
             anneal_strategy="cos",
         )
 
-        # Training loop setup
+        # Early stopping setup
         best_loss = float("inf")
         patience = 20
         patience_counter = 0
+        best_model_state = None
+
+        # Training loop setup
         training_start = time.time()
         last_log = time.time()
 
@@ -235,18 +259,22 @@ class TFTModel:
             if sampler is not None:
                 sampler.set_epoch(epoch)
 
-            epoch_loss = 0
+            epoch_loss = 0.0
             self.model.train()
+            batch_count = 0
 
             # Log progress every minute on rank 0
             if self.rank == 0 and time.time() - last_log > 60:
                 elapsed = time.time() - training_start
-                print(f"Epoch {epoch}/{epochs}, Time elapsed: {elapsed / 60:.1f}m")
+                print(
+                    f"Epoch {epoch}/{epochs}, Time elapsed: {elapsed / 60:.1f}m"
+                )
                 if torch.cuda.is_available():
-                    print(f"GPU Memory: {torch.cuda.memory_allocated() / 1e9:.1f}GB")
+                    print(
+                        f"GPU Memory: {torch.cuda.memory_allocated() / 1e9:.1f}GB"
+                    )
                 last_log = time.time()
 
-            batch_count = 0
             for batch_X, batch_y in loader:
                 batch_X = batch_X.to(self.device)
                 batch_y = batch_y.to(self.device)
@@ -261,7 +289,9 @@ class TFTModel:
                 loss.backward()
 
                 # Gradient clipping
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
+                torch.nn.utils.clip_grad_norm_(
+                    self.model.parameters(), max_norm=1.0
+                )
 
                 optimizer.step()
                 scheduler.step()
@@ -269,6 +299,7 @@ class TFTModel:
                 epoch_loss += loss.item()
                 batch_count += 1
 
+            # Calculate average epoch loss
             epoch_loss /= batch_count
 
             # Early stopping check
@@ -276,13 +307,35 @@ class TFTModel:
                 if epoch_loss < best_loss:
                     best_loss = epoch_loss
                     patience_counter = 0
+                    # Save best model state
+                    if isinstance(self.model, DDP):
+                        best_model_state = self.model.module.state_dict()
+                    else:
+                        best_model_state = self.model.state_dict()
                 else:
                     patience_counter += 1
 
                 if patience_counter >= patience:
                     if self.rank == 0:
-                        print(f"Early stopping at epoch {epoch}")
+                        print(f"Early stopping triggered at epoch {epoch}")
+                        # Restore best model
+                        if isinstance(self.model, DDP):
+                            self.model.module.load_state_dict(best_model_state)
+                        else:
+                            self.model.load_state_dict(best_model_state)
                     break
+
+            # Log epoch results
+            if self.rank == 0 and epoch % 10 == 0:
+                print(f"Epoch {epoch}: Loss = {epoch_loss:.4f}")
+
+        # Final cleanup
+        if early_stopping and best_model_state is not None:
+            # Ensure we're using the best model we found
+            if isinstance(self.model, DDP):
+                self.model.module.load_state_dict(best_model_state)
+            else:
+                self.model.load_state_dict(best_model_state)
 
     def predict(self, X: torch.Tensor) -> torch.Tensor:
         """Generate predictions
