@@ -2,7 +2,7 @@ from prophet import Prophet
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
-from typing import List
+from typing import List, Optional
 
 
 class ProphetModel:
@@ -15,7 +15,7 @@ class ProphetModel:
         )
         self.has_external = False
 
-    def train_and_predict(self, dates: pd.DatetimeIndex, y: np.ndarray) -> np.ndarray:
+    def train_and_predict(self, dates: pd.DatetimeIndex, y: np.ndarray, features: Optional[np.ndarray] = None, feature_names: Optional[List[str]] = None) -> np.ndarray:
         """Train the model and generate predictions"""
 
         # Should validate inputs and handle potential errors
@@ -25,17 +25,36 @@ class ProphetModel:
         # Should handle NaN/Inf values that could break Prophet
         if np.any(np.isnan(y)) or np.any(np.isinf(y)):
             raise ValueError("Input contains NaN or Inf values")
+
         # Create DataFrame in Prophet format
         df = pd.DataFrame({
             'ds': dates,
             'y': y
         })
         
+        # Add features as regressors if provided
+        if features is not None and feature_names is not None:
+            if features.shape[0] != len(dates):
+                raise ValueError("Number of feature rows must match number of dates")
+            if features.shape[1] != len(feature_names):
+                raise ValueError("Number of feature columns must match number of feature names")
+            
+            # Add each feature as a regressor
+            for i, name in enumerate(feature_names):
+                regressor_name = f'feature_{name}'
+                df[regressor_name] = features[:, i]
+                if not self.has_external:
+                    self.add_external_features([regressor_name])
+        
         # Fit the model
         self.model.fit(df)
         
         # Make predictions
         future = pd.DataFrame({'ds': dates})
+        if features is not None and feature_names is not None:
+            for i, name in enumerate(feature_names):
+                future[f'feature_{name}'] = features[:, i]
+        
         forecast = self.model.predict(future)
         
         return forecast['yhat'].values

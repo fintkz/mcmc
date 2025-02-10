@@ -2,12 +2,21 @@ import { useState, useEffect } from 'react';
 import { Card } from "@/components/ui/card";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
+// Feature mapping
 const features = [
-  { id: 'promotions_active', label: 'Promotions' },
-  { id: 'weather_event', label: 'Weather' },
-  { id: 'sports_event', label: 'Sports' },
-  { id: 'school_term', label: 'School' },
-  { id: 'holiday', label: 'Holiday' }
+  { id: '0', name: 'Promotions', description: 'Sales and promotional events' },
+  { id: '1', name: 'Weather', description: 'Weather events and conditions' },
+  { id: '2', name: 'Sports', description: 'Sports events' },
+  { id: '3', name: 'School', description: 'School terms and holidays' },
+  { id: '4', name: 'Holidays', description: 'Public and seasonal holidays' }
+];
+
+// Valid feature combinations
+const validCombinations = [
+  '0', '0_1', '0_1_2', '0_1_2_3', '0_1_2_3_4', '0_1_2_4', '0_1_3', '0_1_3_4',
+  '0_1_4', '0_2', '0_2_3', '0_2_3_4', '0_2_4', '0_3', '0_3_4', '0_4',
+  '1', '1_2', '1_2_3', '1_2_3_4', '1_2_4', '1_3', '1_3_4', '1_4',
+  '2', '2_3', '2_3_4', '2_4', '3', '3_4', '4', 'baseline'
 ];
 
 const FeatureSelector = ({ features, selectedFeatures, onChange }) => {
@@ -16,20 +25,19 @@ const FeatureSelector = ({ features, selectedFeatures, onChange }) => {
       {features.map(feature => (
         <button
           key={feature.id}
-          className={`px-3 py-1 rounded-full text-sm ${
-            selectedFeatures.includes(feature.id)
-              ? 'bg-blue-500 text-white'
-              : 'bg-gray-200 text-gray-700'
-          }`}
+          className={`px-3 py-1 rounded-full text-sm ${selectedFeatures.includes(feature.id)
+            ? 'bg-blue-500 text-white'
+            : 'bg-gray-200 text-gray-700'
+            }`}
           onClick={() => {
-            onChange(prev => 
+            onChange(prev =>
               prev.includes(feature.id)
                 ? prev.filter(f => f !== feature.id)
                 : [...prev, feature.id]
             );
           }}
         >
-          {feature.label}
+          {feature.name}
         </button>
       ))}
     </div>
@@ -40,108 +48,107 @@ const ModelPlot = ({ data, modelName, selectedFeatures }) => {
   if (!data?.predictions) return null;
 
   // Get the correct predictions based on selected features
-  const featureKey = selectedFeatures.length > 0 
+  const selectedKey = selectedFeatures.length > 0
     ? selectedFeatures
-        .sort((a, b) => a.localeCompare(b))
-        .join('_')
+      .map(Number)
+      .sort((a, b) => a - b)
+      .join('_')
     : 'baseline';
 
-  // First try exact match
-  let modelData = data.predictions[featureKey]?.[modelName];
-  let usedKey = featureKey;
+  // Find the exact match or return baseline
+  let modelData = data.predictions[selectedKey]?.[modelName];
+  let usedKey = selectedKey;
 
-  // If exact match not found, try to find the closest combination
+  // If exact match not found, use baseline
   if (!modelData) {
-    const availableKeys = Object.keys(data.predictions);
-    
-    // Filter keys that contain all selected features
-    const matchingKeys = availableKeys.filter(key => {
-      return selectedFeatures.every(feature => key.includes(feature));
-    });
+    modelData = data.predictions['baseline']?.[modelName];
+    usedKey = 'baseline';
+  }
 
-    // Sort by length to get the closest match (fewest additional features)
-    matchingKeys.sort((a, b) => a.split('_').length - b.split('_').length);
-    
-    // Use the first matching combination if available
-    if (matchingKeys.length > 0) {
-      usedKey = matchingKeys[0];
-      modelData = data.predictions[usedKey][modelName];
+  // Return early if no valid data is found
+  if (!modelData?.predictions || !Array.isArray(modelData.predictions) || !Array.isArray(data.actual)) {
+    return (
+      <div className="text-center p-4">
+        No predictions available for the selected features
+      </div>
+    );
+  }
+
+  // Combine actual and predicted values
+  const chartData = modelData.predictions.map((pred, idx) => {
+    const dataPoint = {
+      timestamp: idx,
+      actual: data.actual[idx],
+      predicted: pred
+    };
+
+    // Add uncertainty bounds for bayesian model
+    if (modelName === 'bayesian' && Array.isArray(modelData.uncertainty)) {
+      dataPoint.lower_bound = pred - modelData.uncertainty[idx];
+      dataPoint.upper_bound = pred + modelData.uncertainty[idx];
     }
-  }
 
-  const actual = data.actual;
+    return dataPoint;
+  });
 
-  if (!modelData || !actual) {
-    return <Card className="w-full p-4">
-      <h2 className="text-xl font-bold mb-4">
-        No data available for the selected combination in {modelName.toUpperCase()}
-      </h2>
-      <p className="text-sm text-gray-600">
-        Try a different combination of features
-      </p>
-    </Card>;
-  }
-
-  const chartData = actual.map((val, idx) => ({
-    name: idx,
-    actual: val,
-    predicted: modelData.yhat[idx],
-    upper: modelName === 'bayesian' ? modelData.yhat[idx] + 2 * modelData.uncertainty[idx] : null,
-    lower: modelName === 'bayesian' ? modelData.yhat[idx] - 2 * modelData.uncertainty[idx] : null
-  }));
+  // Add metrics if available
+  const metrics = modelData.metrics ? {
+    mape: modelData.metrics.mape.toFixed(2),
+    rmse: modelData.metrics.rmse.toFixed(2)
+  } : null;
 
   return (
     <Card className="w-full p-4">
-      <h2 className="text-xl font-bold mb-4">
-        {modelName.toUpperCase()} Model 
-        {modelData.metrics && ` (MAPE: ${modelData.metrics.mape.toFixed(2)}%)`}
+      <h2 className="text-xl font-bold mb-2">
+        {modelName.toUpperCase()} Model
+        {metrics && ` (MAPE: ${metrics.mape}%, RMSE: ${metrics.rmse})`}
       </h2>
-      {featureKey !== usedKey && (
+      {selectedKey !== usedKey && (
         <p className="text-sm text-amber-600 mb-2">
-          {/* Note: Showing predictions for combination: {usedKey.split('_').join(' + ')} */}
+          Using closest available feature combination: {usedKey}
         </p>
       )}
-      <div className="h-[400px] w-full">
+      <div className="w-full h-[400px]">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={chartData}>
             <CartesianGrid strokeDasharray="3 3" />
-            <XAxis 
-              dataKey="name" 
+            <XAxis
+              dataKey="timestamp"
               label={{ value: 'Time', position: 'bottom' }}
             />
-            <YAxis 
+            <YAxis
               label={{ value: 'Demand', angle: -90, position: 'insideLeft' }}
             />
             <Tooltip />
             <Legend />
-            <Line 
-              type="monotone" 
-              dataKey="actual" 
-              stroke="#000000" 
-              name="Actual" 
+            <Line
+              type="monotone"
+              dataKey="actual"
+              stroke="#000000"
+              name="Actual"
               dot={false}
             />
-            <Line 
-              type="monotone" 
-              dataKey="predicted" 
-              stroke="#0088FE" 
-              name="Predicted" 
+            <Line
+              type="monotone"
+              dataKey="predicted"
+              stroke="#0088FE"
+              name="Predicted"
               dot={false}
             />
             {modelName === 'bayesian' && (
               <>
-                <Line 
-                  type="monotone" 
-                  dataKey="upper" 
-                  stroke="transparent" 
-                  fill="#0088FE" 
+                <Line
+                  type="monotone"
+                  dataKey="lower_bound"
+                  stroke="transparent"
+                  fill="#0088FE"
                   fillOpacity={0.1}
                 />
-                <Line 
-                  type="monotone" 
-                  dataKey="lower" 
-                  stroke="transparent" 
-                  fill="#0088FE" 
+                <Line
+                  type="monotone"
+                  dataKey="upper_bound"
+                  stroke="transparent"
+                  fill="#0088FE"
                   fillOpacity={0.1}
                 />
               </>
@@ -185,50 +192,50 @@ export default function Home() {
   return (
     <main className="container mx-auto p-4 max-w-[1400px]">
       <h1 className="text-3xl font-bold mb-6">Demand Forecasting Model Comparison</h1>
-      
+
       <div className="flex flex-col gap-8">
         {/* Prophet Model */}
         <section>
           <h2 className="text-xl font-bold mb-2">Prophet Model</h2>
-          <FeatureSelector 
-            features={features} 
-            selectedFeatures={selectedFeatures1} 
+          <FeatureSelector
+            features={features}
+            selectedFeatures={selectedFeatures1}
             onChange={setSelectedFeatures1}
           />
-          <ModelPlot 
-            data={data} 
-            modelName="prophet" 
-            selectedFeatures={selectedFeatures1} 
+          <ModelPlot
+            data={data}
+            modelName="prophet"
+            selectedFeatures={selectedFeatures1}
           />
         </section>
 
         {/* TFT Model */}
         <section>
           <h2 className="text-xl font-bold mb-2">Temporal Fusion Transformer (TFT)</h2>
-          <FeatureSelector 
-            features={features} 
-            selectedFeatures={selectedFeatures2} 
+          <FeatureSelector
+            features={features}
+            selectedFeatures={selectedFeatures2}
             onChange={setSelectedFeatures2}
           />
-          <ModelPlot 
-            data={data} 
-            modelName="tft" 
-            selectedFeatures={selectedFeatures2} 
+          <ModelPlot
+            data={data}
+            modelName="tft"
+            selectedFeatures={selectedFeatures2}
           />
         </section>
 
         {/* Bayesian Model */}
         <section>
           <h2 className="text-xl font-bold mb-2">Bayesian Ensemble</h2>
-          <FeatureSelector 
-            features={features} 
-            selectedFeatures={selectedFeatures3} 
+          <FeatureSelector
+            features={features}
+            selectedFeatures={selectedFeatures3}
             onChange={setSelectedFeatures3}
           />
-          <ModelPlot 
-            data={data} 
-            modelName="bayesian" 
-            selectedFeatures={selectedFeatures3} 
+          <ModelPlot
+            data={data}
+            modelName="bayesian"
+            selectedFeatures={selectedFeatures3}
           />
         </section>
       </div>
