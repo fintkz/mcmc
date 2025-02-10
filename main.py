@@ -337,6 +337,8 @@ def main():
                       help='Which model to train (prophet, tft, bayesian, or all)')
     parser.add_argument('--results-path', type=str, default='results/model_results.json',
                       help='Path to save/load results JSON')
+    parser.add_argument('--workers', type=int, default=4,
+                      help='Number of worker threads for parallel training')
     args = parser.parse_args()
 
     # Setup logging
