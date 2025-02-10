@@ -68,16 +68,19 @@ def process_single_model(combo: tuple, data: DatasetFeatures, logger: logging.Lo
     
     try:
         device = torch.device("cuda:0")  # Use first GPU
+        logger.debug(f"Using device: {device}")
         
         # Move data to device first
         features = data.features.to(device)
         temporal = data.temporal.to(device)
         target = data.target.to(device)
+        logger.debug(f"Data moved to {device}")
         
         # Restore tensor names after moving to device and multiprocessing
         features = features.refine_names('time', 'features')
         temporal = temporal.refine_names('time', 'temporal_features')
         target = target.refine_names('time')
+        logger.debug("Tensor names restored")
         
         # Select features based on combination
         if combo:
@@ -88,6 +91,7 @@ def process_single_model(combo: tuple, data: DatasetFeatures, logger: logging.Lo
                 torch.tensor(list(combo), device=device)  # Create tensor on same device
             )
             features = features.refine_names('time', 'features')
+            logger.debug(f"Selected features: {combo}")
         
         # Prepare data based on model type
         if model_name == "prophet":
@@ -95,6 +99,7 @@ def process_single_model(combo: tuple, data: DatasetFeatures, logger: logging.Lo
                 # Move to CPU for Prophet (it doesn't use GPU)
                 features_for_model = features.rename(None).cpu().numpy()
                 feature_names = [str(i) for i in combo]
+                logger.info(f"Training Prophet model with features: {feature_names}")
                 model = ProphetModel()
                 preds = model.train_and_predict(
                     data.dates,
@@ -103,6 +108,7 @@ def process_single_model(combo: tuple, data: DatasetFeatures, logger: logging.Lo
                     feature_names=feature_names
                 )
             else:
+                logger.info("Training baseline Prophet model (no features)")
                 model = ProphetModel()
                 preds = model.train_and_predict(
                     data.dates,
@@ -110,12 +116,15 @@ def process_single_model(combo: tuple, data: DatasetFeatures, logger: logging.Lo
                 )
             
             # Evaluate predictions
+            metrics = evaluate_predictions(
+                target.rename(None).cpu().numpy(),
+                preds
+            )
+            logger.info(f"Combination {combo_name} - RMSE: {metrics['rmse']:.2f}, MAPE: {metrics['mape']:.2f}%")
+            
             result = {
                 "predictions": preds.tolist(),
-                "metrics": evaluate_predictions(
-                    target.rename(None).cpu().numpy(),
-                    preds
-                )
+                "metrics": metrics
             }
             
         return combo_name, result
@@ -144,6 +153,7 @@ def train_parallel(
 
     # Get all feature combinations
     all_combinations = prepare_feature_combinations(data, logger)
+    logger.info(f"Starting parallel training with {num_workers} workers")
     
     # Remove tensor names for multiprocessing
     data_unnamed = DatasetFeatures(
@@ -160,6 +170,8 @@ def train_parallel(
     # Process combinations in parallel
     completed = 0
     total = len(all_combinations)
+    successful = 0
+    failed = 0
     
     with ProcessPoolExecutor(max_workers=num_workers) as executor:
         for combo_name, result in executor.map(process_func, all_combinations):
@@ -168,15 +180,19 @@ def train_parallel(
                 if combo_name not in results["predictions"]:
                     results["predictions"][combo_name] = {}
                 results["predictions"][combo_name][model_name] = result
+                successful += 1
+            else:
+                failed += 1
                 
-                # Save periodically
-                completed += 1
-                if completed % 5 == 0:
-                    save_results(results, results_path)
-                    logger.info(f"Completed {completed}/{total} combinations")
+            # Save periodically
+            completed += 1
+            if completed % 5 == 0:
+                save_results(results, results_path)
+                logger.info(f"Completed {completed}/{total} combinations (Success: {successful}, Failed: {failed})")
     
     # Final save
     save_results(results, results_path)
+    logger.info(f"Training complete. Total combinations: {total}, Successful: {successful}, Failed: {failed}")
 
 
 def load_existing_results(results_path: str) -> dict:
