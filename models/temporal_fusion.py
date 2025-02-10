@@ -5,6 +5,7 @@ from torch.utils.data import TensorDataset, DataLoader
 from utils import peak_weighted_loss
 import numpy as np
 from typing import Union
+import time
 
 
 class TimeDistributed(nn.Module):
@@ -154,11 +155,11 @@ class TemporalFusionTransformer(nn.Module):
 
 
 class TFTModel:
-    def __init__(self, num_features: int, seq_length: int = 30, batch_size: int = 32, device: str = 'cuda'):
+    def __init__(self, num_features: int, seq_length: int = 30, batch_size: int = 128, device: str = 'cuda'):
         self.model = TemporalFusionTransformer(
             num_features=num_features,
-            hidden_size=64,
-            num_heads=4
+            hidden_size=256,  # Increased from 64
+            num_heads=8      # Increased from 4
         ).to(device)
         self.seq_length = seq_length
         self.batch_size = batch_size
@@ -234,11 +235,22 @@ class TFTModel:
         best_loss = float('inf')
         patience = 20
         patience_counter = 0
+        training_start = time.time()
+        last_log = training_start
 
         for epoch in range(epochs):
             epoch_loss = 0
             self.model.train()
+            
+            # Log progress every minute
+            if time.time() - last_log > 60:
+                elapsed = time.time() - training_start
+                print(f"Epoch {epoch}/{epochs}, Time elapsed: {elapsed/60:.1f}m")
+                if torch.cuda.is_available():
+                    print(f"GPU Memory: {torch.cuda.memory_allocated()/1e9:.1f}GB")
+                last_log = time.time()
 
+            batch_count = 0
             for batch_X, batch_y in loader:
                 # Restore names for tensors
                 batch_X = batch_X.to(self.device).refine_names('batch', 'time', 'features')
@@ -251,11 +263,18 @@ class TFTModel:
                 loss = peak_weighted_loss(predictions.rename(None), batch_y.rename(None))
                 loss.backward()
 
+                # Gradient clipping to prevent instability
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
                 optimizer.step()
                 scheduler.step()
 
                 epoch_loss += loss.item()
+                batch_count += 1
+
+                # Free up memory
+                del outputs, predictions, loss
+                if batch_count % 10 == 0:  # Every 10 batches
+                    torch.cuda.empty_cache()
 
             if epoch_loss < best_loss:
                 best_loss = epoch_loss
@@ -269,7 +288,7 @@ class TFTModel:
 
             if (epoch + 1) % 20 == 0:
                 print(f"Epoch {epoch + 1}/{epochs}, Loss: {epoch_loss:.4f}")
-
+                
     def predict(self, X: torch.Tensor) -> torch.Tensor:
         """Generate predictions with named tensors"""
         # Ensure input has proper names

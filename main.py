@@ -336,7 +336,7 @@ def main():
                       help='Which model to train (prophet, tft, bayesian, or all)')
     parser.add_argument('--results-path', type=str, default='results/model_results.json',
                       help='Path to save/load results JSON')
-    parser.add_argument('--workers', type=int, default=4,
+    parser.add_argument('--workers', type=int, default=2,  
                       help='Number of worker threads for parallel training')
     args = parser.parse_args()
 
@@ -349,7 +349,20 @@ def main():
     try:
         # Enable anomaly detection
         torch.autograd.set_detect_anomaly(True)
-
+        
+        # CUDA optimizations
+        if torch.cuda.is_available():
+            # Enable TF32 for better performance on Ampere GPUs
+            torch.backends.cuda.matmul.allow_tf32 = True
+            torch.backends.cudnn.allow_tf32 = True
+            
+            # Set to fastest mode
+            torch.backends.cudnn.benchmark = True
+            
+            # Log CUDA memory status
+            logger.info(f"CUDA Memory Allocated: {torch.cuda.memory_allocated() / 1e9:.2f} GB")
+            logger.info(f"CUDA Memory Cached: {torch.cuda.memory_reserved() / 1e9:.2f} GB")
+        
         # Set multiprocessing start method to 'spawn' for CUDA support
         mp.set_start_method('spawn')
         

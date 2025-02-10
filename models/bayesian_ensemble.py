@@ -93,8 +93,8 @@ class BayesianNetwork(nn.Module):
 
 
 class GPUBayesianEnsemble(nn.Module):
-    def __init__(self, input_dim: int, n_models: int = 5, device: str = None, 
-                 batch_size: int = 32):
+    def __init__(self, input_dim: int, n_models: int = 10, device: str = None, 
+                 batch_size: int = 128):
         super().__init__()  # Initialize parent nn.Module
         self.device = device or torch.device(
             "cuda" if torch.cuda.is_available() else "cpu"
