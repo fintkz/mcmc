@@ -169,13 +169,27 @@ def process_single_model(combo: tuple, data: DatasetFeatures, logger: logging.Lo
             
             if combo:
                 logger.info(f"\nTraining Bayesian model with features: {combo}")
-                preds = model.train_and_predict(features, target)
+                try:
+                    # Train the model
+                    model.train(features, target)
+                    # Generate predictions
+                    preds = model.predict(features)
+                except Exception as e:
+                    logger.error(f"Error training Bayesian model: {str(e)}")
+                    raise
             else:
                 # For baseline, use time index as feature
                 time_feature = torch.arange(len(target), device=device).float().reshape(-1, 1)
                 time_feature = time_feature.refine_names('time', 'features')
                 logger.info("\nTraining baseline Bayesian model (time only)")
-                preds = model.train_and_predict(time_feature, target)
+                try:
+                    # Train the model
+                    model.train(time_feature, target)
+                    # Generate predictions
+                    preds = model.predict(time_feature)
+                except Exception as e:
+                    logger.error(f"Error training baseline Bayesian model: {str(e)}")
+                    raise
             
             # Move predictions to CPU for evaluation
             preds = preds.cpu().numpy()
@@ -187,16 +201,31 @@ def process_single_model(combo: tuple, data: DatasetFeatures, logger: logging.Lo
             
             if combo:
                 logger.info(f"\nTraining TFT model with features: {combo}")
-                preds = model.train_and_predict(features, target)
+                try:
+                    # Train the model
+                    model.train(features, target)
+                    # Generate predictions
+                    preds = model.predict(features)
+                except Exception as e:
+                    logger.error(f"Error training TFT model: {str(e)}")
+                    raise
             else:
                 # For baseline, use time index as feature
                 time_feature = torch.arange(len(target), device=device).float().reshape(-1, 1)
                 time_feature = time_feature.refine_names('time', 'features')
                 logger.info("\nTraining baseline TFT model (time only)")
-                preds = model.train_and_predict(time_feature, target)
+                try:
+                    # Train the model
+                    model.train(time_feature, target)
+                    # Generate predictions
+                    preds = model.predict(time_feature)
+                except Exception as e:
+                    logger.error(f"Error training baseline TFT model: {str(e)}")
+                    raise
             
-            # Move predictions to CPU for evaluation
-            preds = preds.cpu().numpy()
+            # Move predictions to CPU for evaluation if they're not already
+            if isinstance(preds, torch.Tensor):
+                preds = preds.cpu().numpy()
         
         else:
             raise ValueError(f"Unknown model type: {model_name}")
@@ -313,6 +342,9 @@ def main():
 
     # Setup logging
     logger = setup_logging()
+    
+    # Log process information
+    logger.info(f"Starting training process with PID: {os.getpid()}")
 
     try:
         # Enable anomaly detection
