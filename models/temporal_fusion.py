@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from torch.utils.data import TensorDataset, DataLoader
 from torch.optim.lr_scheduler import OneCycleLR
 import torch.distributed as dist
@@ -8,6 +7,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from utils import calculate_mape
 import time
 from typing import Union, Tuple
+import numpy as np
 
 
 class TimeDistributed(nn.Module):
