@@ -172,8 +172,9 @@ def process_single_model(combo: tuple, data: DatasetFeatures, logger: logging.Lo
                 try:
                     # Train the model
                     model.train(features, target)
-                    # Generate predictions
-                    preds = model.predict(features)
+                    # Generate predictions - returns (mean, std)
+                    predictions, uncertainties = model.predict(features)
+                    preds = predictions  # We only need the mean for evaluation
                 except Exception as e:
                     logger.error(f"Error training Bayesian model: {str(e)}")
                     raise
@@ -185,8 +186,9 @@ def process_single_model(combo: tuple, data: DatasetFeatures, logger: logging.Lo
                 try:
                     # Train the model
                     model.train(time_feature, target)
-                    # Generate predictions
-                    preds = model.predict(time_feature)
+                    # Generate predictions - returns (mean, std)
+                    predictions, uncertainties = model.predict(time_feature)
+                    preds = predictions  # We only need the mean for evaluation
                 except Exception as e:
                     logger.error(f"Error training baseline Bayesian model: {str(e)}")
                     raise

@@ -107,101 +107,89 @@ class GPUBayesianEnsemble(nn.Module):
     def train(self, X: torch.Tensor, y: torch.Tensor, epochs: int = 400, 
             num_samples: int = 10):
         """Train the ensemble with named tensors"""
-        # Ensure inputs have proper names and are on CPU
-        X = X.cpu().refine_names('time', 'features')
-        y = y.cpu().refine_names('time')
+        # Ensure inputs have proper names
+        X = X.refine_names('time', 'features')
+        y = y.refine_names('time')
         
-        # Validate input dimensions
-        if X.size('features') != self.input_dim:
-            raise ValueError(
-                f"Input dimension mismatch. Expected {self.input_dim}, got {X.size('features')}"
-            )
-
-        # Create dataset (TensorDataset doesn't support named tensors)
+        # Create dataset
         dataset = TensorDataset(X.rename(None), y.rename(None))
-        loader = DataLoader(
-            dataset, 
-            batch_size=self.batch_size, 
-            shuffle=True, 
-            pin_memory=True,
-            num_workers=0  # Avoid multiprocessing issues
-        )
-
+        loader = DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
+        
+        # Clear existing models
+        self.models = []
+        
         try:
-
-            # Clear any existing models
-            self.models = []
-
             for i in range(self.n_models):
+                print(f"\nTraining model {i+1}/{self.n_models}")
                 model = BayesianNetwork(self.input_dim).to(self.device)
+                
+                # Initialize optimizer with lower initial learning rate
                 optimizer = torch.optim.AdamW(
-                    model.parameters(), 
-                    lr=0.001, 
+                    model.parameters(),
+                    lr=1e-4,  # Lower initial learning rate
                     weight_decay=0.01
                 )
-
-                scheduler = torch.optim.lr_scheduler.OneCycleLR(
-                    optimizer,
-                    max_lr=0.01,
-                    epochs=epochs,
-                    steps_per_epoch=len(loader),
-                    pct_start=0.3,
-                    anneal_strategy="cos",
-                )
-
-                best_loss = float("inf")
-                patience = 25
+                
+                # Learning rate scheduler with warmup
+                num_steps = len(loader) * epochs
+                warmup_steps = num_steps // 10  # 10% warmup
+                
+                def lr_lambda(step):
+                    if step < warmup_steps:
+                        return float(step) / float(max(1, warmup_steps))
+                    return 0.1 + 0.9 * (1.0 - float(step - warmup_steps) / float(max(1, num_steps - warmup_steps)))
+                
+                scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
+                
+                best_loss = float('inf')
+                patience = 20
                 patience_counter = 0
-
+                
                 for epoch in range(epochs):
-                    epoch_loss = 0
                     model.train()
-
+                    epoch_loss = 0
+                    
                     for batch_X, batch_y in loader:
-                        # Move to GPU and restore names
-                        batch_X = batch_X.to(self.device).refine_names('batch', 'features')
-                        batch_y = batch_y.to(self.device).refine_names('batch')
-
+                        batch_X = batch_X.to(self.device)
+                        batch_y = batch_y.to(self.device)
+                        
                         optimizer.zero_grad()
-
-                        # Multiple forward passes for MC Dropout
-                        predictions = []
+                        
+                        # Multiple forward passes
+                        batch_losses = []
                         for _ in range(num_samples):
                             pred = model(batch_X, sample=True)
-                            predictions.append(pred.rename(None))
+                            loss = peak_weighted_loss(pred, batch_y)
+                            batch_losses.append(loss)
                         
-                        predictions = torch.stack(predictions, dim=0)  # [samples, batch]
-                        pred_mean = predictions.mean(0)  # Average over samples
-
-                        loss = peak_weighted_loss(pred_mean, batch_y.rename(None))
-
+                        # Average loss over samples
+                        loss = torch.stack(batch_losses).mean()
                         loss.backward()
-                        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+                        
+                        # Gradient clipping
+                        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+                        
                         optimizer.step()
                         scheduler.step()
-
+                        
                         epoch_loss += loss.item()
-
+                    
+                    if (epoch + 1) % 20 == 0:
+                        print(f"Model {i+1}/{self.n_models}, Epoch {epoch + 1}/{epochs}, Loss: {epoch_loss:.4f}")
+                    
                     if epoch_loss < best_loss:
                         best_loss = epoch_loss
                         patience_counter = 0
                     else:
                         patience_counter += 1
-
+                    
                     if patience_counter >= patience:
-                        print(f"Model {i + 1}/{self.n_models}: Early stopping at epoch {epoch}")
+                        print(f"Model {i+1}/{self.n_models}: Early stopping at epoch {epoch}")
                         break
-
-                    if (epoch + 1) % 20 == 0:
-                        print(
-                            f"Model {i + 1}/{self.n_models}, "
-                            f"Epoch {epoch + 1}/{epochs}, "
-                            f"Loss: {epoch_loss:.4f}"
-                        )
-
+                
                 self.models.append(model)
                 torch.cuda.empty_cache()
-
+            
             print(f"Finished training {self.n_models} models")
         
         finally:
