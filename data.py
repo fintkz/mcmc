@@ -85,6 +85,72 @@ class SyntheticDataGenerator:
 
         return base_demand * weather_effect, weather_indicator
 
+    def add_sports_events(self, base_demand: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Add sports event effects with named tensors"""
+        # Generate random sports event dates (about 2 per month)
+        sports_dates = torch.sort(torch.randperm(self.periods)[:24])[0]
+        
+        sports_effect = torch.zeros(self.periods).refine_names('time')
+        sports_indicator = torch.zeros(self.periods).refine_names('time')
+        
+        for date in sports_dates:
+            effect = torch.randn(1).item() * 0.3 + 0.2  # Random positive effect
+            sports_effect.rename(None)[date] = effect
+            sports_indicator.rename(None)[date] = 1
+        
+        return base_demand * sports_effect, sports_indicator
+
+    def add_school_terms(self, base_demand: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Add school term effects with named tensors"""
+        # Create term dates (roughly following typical school calendar)
+        school_indicator = torch.zeros(self.periods).refine_names('time')
+        school_effect = torch.zeros(self.periods).refine_names('time')
+        
+        # Term 1: Jan-Mar (days 0-90)
+        school_indicator.rename(None)[0:90] = 1
+        # Term 2: Apr-Jun (days 91-181)
+        school_indicator.rename(None)[105:181] = 1
+        # Term 3: Jul-Sep (days 182-273)
+        school_indicator.rename(None)[196:273] = 1
+        # Term 4: Oct-Dec (days 274-365)
+        school_indicator.rename(None)[288:365] = 1
+        
+        # Add small random effect during school terms
+        school_effect = school_indicator.rename(None) * (torch.randn(self.periods) * 0.1 + 0.15)
+        school_effect = school_effect.refine_names('time')
+        
+        return base_demand * school_effect, school_indicator
+
+    def add_holidays(self, base_demand: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Add holiday effects with named tensors"""
+        holiday_dates = [
+            0,   # New Year's Day
+            45,  # Valentine's Day
+            78,  # Easter
+            120, # Mother's Day
+            150, # Father's Day
+            185, # Independence Day
+            243, # Labor Day
+            303, # Halloween
+            329, # Thanksgiving
+            359  # Christmas
+        ]
+        
+        holiday_effect = torch.zeros(self.periods).refine_names('time')
+        holiday_indicator = torch.zeros(self.periods).refine_names('time')
+        
+        for date in holiday_dates:
+            if date < self.periods:
+                effect = torch.randn(1).item() * 0.2 + 0.4  # Random positive effect
+                holiday_effect.rename(None)[date] = effect
+                holiday_indicator.rename(None)[date] = 1
+                
+                # Add pre-holiday effect
+                if date > 0:
+                    holiday_effect.rename(None)[date-1] = effect * 0.5
+        
+        return base_demand * holiday_effect, holiday_indicator
+
     def create_temporal_features(self, dates: pd.Series) -> torch.Tensor:
         """Create temporal features with named dimensions"""
         time = torch.arange(self.periods, dtype=torch.float32)
@@ -119,27 +185,32 @@ class SyntheticDataGenerator:
             # Generate all effects and their indicators
             promo_effect, promo_indicator = self.add_promotions(base_demand)
             weather_effect, weather_indicator = self.add_weather_effects(base_demand)
+            sports_effect, sports_indicator = self.add_sports_events(base_demand)
+            school_effect, school_indicator = self.add_school_terms(base_demand)
+            holiday_effect, holiday_indicator = self.add_holidays(base_demand)
             
-            # Stack all feature indicators (using integer dim first)
+            # Stack all feature indicators
             features = torch.stack([
                 promo_indicator.rename(None),
                 weather_indicator.rename(None),
-                torch.zeros(self.periods),  # sports placeholder
-                torch.zeros(self.periods),  # school placeholder
-                torch.zeros(self.periods)   # holiday placeholder
-            ], dim=1)  # Use dim=1 for features dimension
+                sports_indicator.rename(None),
+                school_indicator.rename(None),
+                holiday_indicator.rename(None)
+            ], dim=1)
             
             # Now refine the names
             features = features.refine_names('time', 'features')
             
             # Combine all effects
-            final_demand = base_demand + promo_effect + weather_effect
+            final_demand = (base_demand + promo_effect + 
+                           weather_effect + sports_effect + 
+                           school_effect + holiday_effect)
             
             # Add noise
             noise = torch.randn(self.periods) * (base_demand.rename(None).std() * 0.05)
             final_demand = torch.maximum(
                 torch.zeros_like(final_demand.rename(None)),
-                final_demand.rename(None) + noise
+                (final_demand.rename(None) + noise)
             ).refine_names('time')
 
             # Create dates
@@ -173,9 +244,9 @@ class SyntheticDataGenerator:
             feature_dates = {
                 'promotions': promo_indicator.rename(None).nonzero().squeeze().tolist(),
                 'weather': weather_indicator.rename(None).nonzero().squeeze().tolist(),
-                'sports': [],
-                'school': [],
-                'holidays': []
+                'sports': sports_indicator.rename(None).nonzero().squeeze().tolist(),
+                'school': school_indicator.rename(None).nonzero().squeeze().tolist(),
+                'holidays': holiday_indicator.rename(None).nonzero().squeeze().tolist()
             }
 
             # Validate final shapes

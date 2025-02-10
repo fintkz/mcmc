@@ -61,6 +61,19 @@ def prepare_feature_combinations(data: DatasetFeatures, logger: logging.Logger):
     return all_combinations
 
 
+def safe_corrcoef(x, y):
+    """Calculate correlation coefficient safely handling edge cases"""
+    # Check for constant values
+    if np.std(x) == 0 or np.std(y) == 0:
+        return 0.0
+    
+    # Check for NaN/inf values
+    if np.any(np.isnan(x)) or np.any(np.isnan(y)) or np.any(np.isinf(x)) or np.any(np.isinf(y)):
+        return 0.0
+    
+    return np.corrcoef(x, y)[0, 1]
+
+
 def process_single_model(combo: tuple, data: DatasetFeatures, logger: logging.Logger, model_name: str) -> tuple:
     """Process a single combination for a specific model"""
     combo_name = "_".join(map(str, combo)) if combo else "baseline"
@@ -95,19 +108,36 @@ def process_single_model(combo: tuple, data: DatasetFeatures, logger: logging.Lo
             
             # Log feature statistics
             features_np = features.rename(None).cpu().numpy()
+            target_np = target.rename(None).cpu().numpy()
+            
+            logger.info("\nFeature Diagnostics:")
             for i, feat_idx in enumerate(combo):
-                feat_stats = {
-                    'mean': float(np.mean(features_np[:, i])),
-                    'std': float(np.std(features_np[:, i])),
-                    'min': float(np.min(features_np[:, i])),
-                    'max': float(np.max(features_np[:, i]))
-                }
-                logger.info(f"Feature {feat_idx} stats: {feat_stats}")
+                feat_data = features_np[:, i]
                 
-                # Check correlation with target
-                target_np = target.rename(None).cpu().numpy()
-                corr = np.corrcoef(features_np[:, i], target_np)[0, 1]
-                logger.info(f"Feature {feat_idx} correlation with target: {corr:.3f}")
+                # Basic statistics
+                feat_stats = {
+                    'mean': float(np.mean(feat_data)),
+                    'std': float(np.std(feat_data)),
+                    'min': float(np.min(feat_data)),
+                    'max': float(np.max(feat_data)),
+                    'zeros': int(np.sum(feat_data == 0)),
+                    'nans': int(np.sum(np.isnan(feat_data))),
+                    'infs': int(np.sum(np.isinf(feat_data)))
+                }
+                
+                # Correlation with target
+                corr = safe_corrcoef(feat_data, target_np)
+                
+                logger.info(f"\nFeature {feat_idx}:")
+                logger.info(f"  Statistics: {feat_stats}")
+                logger.info(f"  Correlation with target: {corr:.3f}")
+                
+                if feat_stats['std'] == 0:
+                    logger.warning(f"  WARNING: Feature {feat_idx} has zero standard deviation (constant value)")
+                if feat_stats['nans'] > 0:
+                    logger.warning(f"  WARNING: Feature {feat_idx} has {feat_stats['nans']} NaN values")
+                if feat_stats['infs'] > 0:
+                    logger.warning(f"  WARNING: Feature {feat_idx} has {feat_stats['infs']} infinite values")
         
         # Prepare data based on model type
         if model_name == "prophet":
@@ -115,13 +145,7 @@ def process_single_model(combo: tuple, data: DatasetFeatures, logger: logging.Lo
                 # Move to CPU for Prophet (it doesn't use GPU)
                 features_for_model = features.rename(None).cpu().numpy()
                 feature_names = [str(i) for i in combo]
-                logger.info(f"Training Prophet model with features: {feature_names}")
-                
-                # Log feature importance (correlation based)
-                target_np = target.rename(None).cpu().numpy()
-                correlations = [np.corrcoef(features_for_model[:, i], target_np)[0, 1] for i in range(features_for_model.shape[1])]
-                for feat_name, corr in zip(feature_names, correlations):
-                    logger.info(f"Feature {feat_name} correlation with target: {corr:.3f}")
+                logger.info(f"\nTraining Prophet model with features: {feature_names}")
                 
                 model = ProphetModel()
                 preds = model.train_and_predict(
@@ -131,7 +155,7 @@ def process_single_model(combo: tuple, data: DatasetFeatures, logger: logging.Lo
                     feature_names=feature_names
                 )
             else:
-                logger.info("Training baseline Prophet model (no features)")
+                logger.info("\nTraining baseline Prophet model (no features)")
                 model = ProphetModel()
                 preds = model.train_and_predict(
                     data.dates,
@@ -143,7 +167,9 @@ def process_single_model(combo: tuple, data: DatasetFeatures, logger: logging.Lo
                 target.rename(None).cpu().numpy(),
                 preds
             )
-            logger.info(f"Combination {combo_name} - RMSE: {metrics['rmse']:.2f}, MAPE: {metrics['mape']:.2f}%")
+            logger.info(f"\nResults for {combo_name}:")
+            logger.info(f"  RMSE: {metrics['rmse']:.2f}")
+            logger.info(f"  MAPE: {metrics['mape']:.2f}%")
             
             result = {
                 "predictions": preds.tolist(),
