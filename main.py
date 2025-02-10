@@ -338,8 +338,15 @@ def main():
         generator = SyntheticDataGenerator()
         data = generator.generate_data()
 
-        # Train specific model
-        train_parallel(data, logger, args.model, args.workers, args.results_path)
+        # Train models
+        if args.model == 'all':
+            # Train each model type
+            for model_type in ['prophet', 'bayesian', 'tft']:
+                logger.info(f"\nTraining {model_type.upper()} models...")
+                train_parallel(data, logger, model_type, args.workers, args.results_path)
+        else:
+            # Train specific model
+            train_parallel(data, logger, args.model, args.workers, args.results_path)
 
         logger.info("Training completed successfully!")
 
