@@ -241,13 +241,9 @@ class TFTModel:
             # Log progress every minute on rank 0
             if self.rank == 0 and time.time() - last_log > 60:
                 elapsed = time.time() - training_start
-                print(
-                    f"Epoch {epoch}/{epochs}, Time elapsed: {elapsed / 60:.1f}m"
-                )
+                print(f"Epoch {epoch}/{epochs}, Time elapsed: {elapsed / 60:.1f}m")
                 if torch.cuda.is_available():
-                    print(
-                        f"GPU Memory: {torch.cuda.memory_allocated() / 1e9:.1f}GB"
-                    )
+                    print(f"GPU Memory: {torch.cuda.memory_allocated() / 1e9:.1f}GB")
                 last_log = time.time()
 
             batch_count = 0
@@ -265,9 +261,7 @@ class TFTModel:
                 loss.backward()
 
                 # Gradient clipping
-                torch.nn.utils.clip_grad_norm_(
-                    self.model.parameters(), max_norm=1.0
-                )
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
 
                 optimizer.step()
                 scheduler.step()

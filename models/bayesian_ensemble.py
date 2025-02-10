@@ -113,14 +113,11 @@ class GPUBayesianEnsemble:
 
         # Wrap networks in DDP if using distributed training
         if device == "cuda":
-            self.networks = [
-                DDP(net, device_ids=[rank]) for net in self.networks
-            ]
+            self.networks = [DDP(net, device_ids=[rank]) for net in self.networks]
 
         # Initialize optimizers
         self.optimizers = [
-            torch.optim.Adam(net.parameters(), lr=0.001)
-            for net in self.networks
+            torch.optim.Adam(net.parameters(), lr=0.001) for net in self.networks
         ]
 
     def train(
@@ -185,9 +182,7 @@ class GPUBayesianEnsemble:
                         for _ in range(mc_samples):
                             mean, logvar = net(batch_x)
                             var = torch.exp(logvar)
-                            pred = Normal(
-                                mean.squeeze(), var.sqrt().squeeze()
-                            ).sample()
+                            pred = Normal(mean.squeeze(), var.sqrt().squeeze()).sample()
                             all_preds.append(pred)
 
                         # Average predictions

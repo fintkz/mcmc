@@ -93,9 +93,7 @@ class SyntheticDataGenerator:
 
         for date in weather_dates:
             duration = torch.randint(1, 4, (1,)).item()
-            effect = (
-                torch.randn(1).item() * 0.2
-            )  # Random effect between -0.2 and 0.2
+            effect = torch.randn(1).item() * 0.2  # Random effect between -0.2 and 0.2
             end_idx = min(date.item() + duration, self.periods)
             weather_effect[date:end_idx] = effect
             weather_indicator[date] = 1
@@ -137,9 +135,7 @@ class SyntheticDataGenerator:
         school_indicator[288:365] = 1
 
         # Add small random effect during school terms
-        school_effect = school_indicator * (
-            torch.randn(self.periods) * 0.1 + 0.15
-        )
+        school_effect = school_indicator * (torch.randn(self.periods) * 0.1 + 0.15)
 
         return base_demand * school_effect, school_indicator
 
@@ -165,9 +161,7 @@ class SyntheticDataGenerator:
 
         for date in holiday_dates:
             if date < self.periods:
-                effect = (
-                    torch.randn(1).item() * 0.2 + 0.4
-                )  # Random positive effect
+                effect = torch.randn(1).item() * 0.2 + 0.4  # Random positive effect
                 holiday_effect[date] = effect
                 holiday_indicator[date] = 1
 
@@ -182,9 +176,7 @@ class SyntheticDataGenerator:
         time = torch.arange(self.periods, dtype=torch.float32)
 
         # Create cyclical features
-        day_of_year = torch.tensor(
-            dates.dt.dayofyear.values, dtype=torch.float32
-        )
+        day_of_year = torch.tensor(dates.dt.dayofyear.values, dtype=torch.float32)
         week_of_year = torch.tensor(
             dates.dt.isocalendar().week.values, dtype=torch.float32
         )
@@ -216,12 +208,8 @@ class SyntheticDataGenerator:
 
             # Add various effects
             promo_effect, promo_indicator = self.add_promotions(base_demand)
-            weather_effect, weather_indicator = self.add_weather_effects(
-                base_demand
-            )
-            sports_effect, sports_indicator = self.add_sports_events(
-                base_demand
-            )
+            weather_effect, weather_indicator = self.add_weather_effects(base_demand)
+            sports_effect, sports_indicator = self.add_sports_events(base_demand)
             school_effect, school_indicator = self.add_school_terms(base_demand)
             holiday_effect, holiday_indicator = self.add_holidays(base_demand)
 
@@ -255,9 +243,7 @@ class SyntheticDataGenerator:
             )
 
             # Create dates
-            dates = pd.date_range(
-                start=self.start_date, periods=self.periods, freq="D"
-            )
+            dates = pd.date_range(start=self.start_date, periods=self.periods, freq="D")
             dates_series = pd.Series(dates)
 
             # Generate temporal features

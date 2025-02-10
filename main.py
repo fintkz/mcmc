@@ -158,9 +158,7 @@ def process_single_model(
             else:
                 logger.info("\nTraining baseline Prophet model (no features)")
                 model = ProphetModel()
-                preds = model.train_and_predict(
-                    data.dates, target.cpu().numpy()
-                )
+                preds = model.train_and_predict(data.dates, target.cpu().numpy())
 
         elif model_name == "bayesian":
             # Initialize model
@@ -180,9 +178,7 @@ def process_single_model(
             else:
                 # For baseline, use time index as feature
                 time_feature = (
-                    torch.arange(len(target), device=device)
-                    .float()
-                    .reshape(-1, 1)
+                    torch.arange(len(target), device=device).float().reshape(-1, 1)
                 )
                 logger.info("\nTraining baseline Bayesian model (time only)")
                 try:
@@ -191,9 +187,7 @@ def process_single_model(
                     predictions, uncertainties = model.predict(time_feature)
                     preds = predictions  # We only need the mean for evaluation
                 except Exception as e:
-                    logger.error(
-                        f"Error training baseline Bayesian model: {str(e)}"
-                    )
+                    logger.error(f"Error training baseline Bayesian model: {str(e)}")
                     raise
 
             # Move predictions to CPU for evaluation
@@ -216,9 +210,7 @@ def process_single_model(
             else:
                 # For baseline, use time index as feature
                 time_feature = (
-                    torch.arange(len(target), device=device)
-                    .float()
-                    .reshape(-1, 1)
+                    torch.arange(len(target), device=device).float().reshape(-1, 1)
                 )
                 logger.info("\nTraining baseline TFT model (time only)")
                 try:
@@ -356,9 +348,7 @@ def train_model(rank, world_size, model_type="tft"):
 
         # Create model based on type
         if model_type == "tft":
-            model = TFTModel(
-                num_features=X.size(1), device=f"cuda:{rank}", rank=rank
-            )
+            model = TFTModel(num_features=X.size(1), device=f"cuda:{rank}", rank=rank)
         elif model_type == "bayesian":
             model = GPUBayesianEnsemble(
                 input_dim=X.size(1), device=f"cuda:{rank}", rank=rank
@@ -372,9 +362,7 @@ def train_model(rank, world_size, model_type="tft"):
                     y=y.cpu().numpy(),
                     features=X.cpu().numpy(),
                 )
-                metrics = evaluate_predictions(
-                    y.cpu(), torch.tensor(predictions)
-                )
+                metrics = evaluate_predictions(y.cpu(), torch.tensor(predictions))
                 print(f"Prophet Metrics: {metrics}")
             cleanup()
             return

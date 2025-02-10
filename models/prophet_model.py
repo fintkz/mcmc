@@ -49,9 +49,7 @@ class ProphetModel:
                     f"features and y must have same length, got {len(features)} and {len(y)}"
                 )
             if feature_names is None:
-                feature_names = [
-                    f"feature_{i}" for i in range(features.shape[1])
-                ]
+                feature_names = [f"feature_{i}" for i in range(features.shape[1])]
             if len(feature_names) != features.shape[1]:
                 raise ValueError(
                     f"Number of feature names ({len(feature_names)}) must match number of features ({features.shape[1]})"

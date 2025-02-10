@@ -144,9 +144,7 @@ def peak_weighted_loss(y_pred, y_true, alpha=1.5, beta=0.5):
     return (base_loss * total_weight).mean()
 
 
-def plot_predictions_comparison(
-    y_true, predictions_dict, title="Model Comparison"
-):
+def plot_predictions_comparison(y_true, predictions_dict, title="Model Comparison"):
     """
     Plot predictions from multiple models
     predictions_dict: {"model_name": predictions}
