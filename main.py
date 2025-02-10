@@ -92,6 +92,22 @@ def process_single_model(combo: tuple, data: DatasetFeatures, logger: logging.Lo
             )
             features = features.refine_names('time', 'features')
             logger.debug(f"Selected features: {combo}")
+            
+            # Log feature statistics
+            features_np = features.rename(None).cpu().numpy()
+            for i, feat_idx in enumerate(combo):
+                feat_stats = {
+                    'mean': float(np.mean(features_np[:, i])),
+                    'std': float(np.std(features_np[:, i])),
+                    'min': float(np.min(features_np[:, i])),
+                    'max': float(np.max(features_np[:, i]))
+                }
+                logger.info(f"Feature {feat_idx} stats: {feat_stats}")
+                
+                # Check correlation with target
+                target_np = target.rename(None).cpu().numpy()
+                corr = np.corrcoef(features_np[:, i], target_np)[0, 1]
+                logger.info(f"Feature {feat_idx} correlation with target: {corr:.3f}")
         
         # Prepare data based on model type
         if model_name == "prophet":
@@ -100,6 +116,13 @@ def process_single_model(combo: tuple, data: DatasetFeatures, logger: logging.Lo
                 features_for_model = features.rename(None).cpu().numpy()
                 feature_names = [str(i) for i in combo]
                 logger.info(f"Training Prophet model with features: {feature_names}")
+                
+                # Log feature importance (correlation based)
+                target_np = target.rename(None).cpu().numpy()
+                correlations = [np.corrcoef(features_for_model[:, i], target_np)[0, 1] for i in range(features_for_model.shape[1])]
+                for feat_name, corr in zip(feature_names, correlations):
+                    logger.info(f"Feature {feat_name} correlation with target: {corr:.3f}")
+                
                 model = ProphetModel()
                 preds = model.train_and_predict(
                     data.dates,
