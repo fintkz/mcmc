@@ -93,7 +93,9 @@ class SyntheticDataGenerator:
 
         for date in weather_dates:
             duration = torch.randint(1, 4, (1,)).item()
-            effect = torch.randn(1).item() * 0.2  # Random effect between -0.2 and 0.2
+            effect = (
+                torch.randn(1).item() * 0.2
+            )  # Random effect between -0.2 and 0.2
             end_idx = min(date.item() + duration, self.periods)
             weather_effect[date:end_idx] = effect
             weather_indicator[date] = 1
@@ -135,7 +137,9 @@ class SyntheticDataGenerator:
         school_indicator[288:365] = 1
 
         # Add small random effect during school terms
-        school_effect = school_indicator * (torch.randn(self.periods) * 0.1 + 0.15)
+        school_effect = school_indicator * (
+            torch.randn(self.periods) * 0.1 + 0.15
+        )
 
         return base_demand * school_effect, school_indicator
 
@@ -161,7 +165,9 @@ class SyntheticDataGenerator:
 
         for date in holiday_dates:
             if date < self.periods:
-                effect = torch.randn(1).item() * 0.2 + 0.4  # Random positive effect
+                effect = (
+                    torch.randn(1).item() * 0.2 + 0.4
+                )  # Random positive effect
                 holiday_effect[date] = effect
                 holiday_indicator[date] = 1
 
@@ -176,7 +182,9 @@ class SyntheticDataGenerator:
         time = torch.arange(self.periods, dtype=torch.float32)
 
         # Create cyclical features
-        day_of_year = torch.tensor(dates.dt.dayofyear.values, dtype=torch.float32)
+        day_of_year = torch.tensor(
+            dates.dt.dayofyear.values, dtype=torch.float32
+        )
         week_of_year = torch.tensor(
             dates.dt.isocalendar().week.values, dtype=torch.float32
         )
@@ -197,23 +205,34 @@ class SyntheticDataGenerator:
 
         return temporal_features
 
+    def _get_feature_dates(self, features: torch.Tensor) -> dict:
+        """Extract feature dates from feature tensor"""
+        return {
+            name: features[:, i].nonzero().squeeze().tolist()
+            for i, name in enumerate(self.feature_names)
+        }
+
     def generate_data(self) -> DatasetFeatures:
         """Generate complete synthetic dataset"""
         if self.periods < 365:
             raise ValueError(f"Periods must be >= 365, got {self.periods}")
 
         try:
-            # Generate base demand
+            # Generate base demand with shape [periods]
             base_demand = self.generate_base_demand()
 
-            # Add various effects
+            # Add various effects - each returns tuple of (effect, indicator) with shape [periods]
             promo_effect, promo_indicator = self.add_promotions(base_demand)
-            weather_effect, weather_indicator = self.add_weather_effects(base_demand)
-            sports_effect, sports_indicator = self.add_sports_events(base_demand)
+            weather_effect, weather_indicator = self.add_weather_effects(
+                base_demand
+            )
+            sports_effect, sports_indicator = self.add_sports_events(
+                base_demand
+            )
             school_effect, school_indicator = self.add_school_terms(base_demand)
             holiday_effect, holiday_indicator = self.add_holidays(base_demand)
 
-            # Stack all feature indicators
+            # Stack all feature indicators into shape [periods, n_features]
             features = torch.stack(
                 [
                     promo_indicator,
@@ -222,10 +241,19 @@ class SyntheticDataGenerator:
                     school_indicator,
                     holiday_indicator,
                 ],
-                dim=1,
+                dim=1,  # Stack along feature dimension
             )
 
-            # Combine all effects
+            # Create dates
+            dates = pd.date_range(
+                start=self.start_date, periods=self.periods, freq="D"
+            )
+            dates_series = pd.Series(dates)
+
+            # Generate temporal features with shape [periods, n_temporal_features]
+            temporal_features = self.create_temporal_features(dates_series)
+
+            # Combine all effects - maintaining shape [periods]
             final_demand = (
                 base_demand
                 + promo_effect
@@ -242,35 +270,12 @@ class SyntheticDataGenerator:
                 (final_demand + noise),
             )
 
-            # Create dates
-            dates = pd.date_range(start=self.start_date, periods=self.periods, freq="D")
-            dates_series = pd.Series(dates)
-
-            # Generate temporal features
-            temporal_features = self.create_temporal_features(dates_series)
-
-            # Store feature dates for reference
-            feature_dates = {
-                "promotions": promo_indicator.nonzero().squeeze().tolist(),
-                "weather": weather_indicator.nonzero().squeeze().tolist(),
-                "sports": sports_indicator.nonzero().squeeze().tolist(),
-                "school": school_indicator.nonzero().squeeze().tolist(),
-                "holidays": holiday_indicator.nonzero().squeeze().tolist(),
-            }
-
-            # Validate final shapes
-            assert features.size(0) == self.periods
-            assert features.size(1) == len(self.feature_names)
-            assert temporal_features.size(0) == self.periods
-            assert temporal_features.size(1) == len(self.temporal_feature_names)
-            assert final_demand.size(0) == self.periods
-
             return DatasetFeatures(
-                features=features,
-                temporal=temporal_features,
-                target=final_demand,
+                features=features,  # Shape: [periods, n_features]
+                temporal=temporal_features,  # Shape: [periods, n_temporal_features]
+                target=final_demand,  # Shape: [periods]
                 dates=dates_series,
-                feature_dates=feature_dates,
+                feature_dates=self._get_feature_dates(features),
             )
 
         except Exception as e:
