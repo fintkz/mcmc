@@ -69,26 +69,31 @@ def process_single_model(combo: tuple, data: DatasetFeatures, logger: logging.Lo
     try:
         device = torch.device("cuda:0")  # Use first GPU
         
+        # Restore tensor names after multiprocessing
+        features = data.features.refine_names('time', 'features')
+        temporal = data.temporal.refine_names('time', 'temporal_features')
+        target = data.target.refine_names('time')
+        
         # Select features based on combination
         if combo:
-            features = data.features.rename(None)  # Remove names
+            # Remove names for selection, then restore
+            features = features.rename(None)
             features = features.index_select(
                 1,  # features dimension is 1 (time=0, features=1)
-                torch.tensor(list(combo), device=features.device)
+                torch.tensor(list(combo), device=device)
             )
-            features = features.refine_names('time', 'features')  # Restore names
-        else:
-            features = data.features
-
+            features = features.refine_names('time', 'features')
+        
         # Prepare data based on model type
         if model_name == "prophet":
             if combo:
+                # Prophet doesn't use named tensors, so just rename(None)
                 features_for_model = features.rename(None).cpu().numpy()
                 feature_names = [str(i) for i in combo]
                 model = ProphetModel()
                 preds = model.train_and_predict(
                     data.dates,
-                    data.target.rename(None).cpu().numpy(),
+                    target.rename(None).cpu().numpy(),
                     features=features_for_model,
                     feature_names=feature_names
                 )
@@ -96,14 +101,14 @@ def process_single_model(combo: tuple, data: DatasetFeatures, logger: logging.Lo
                 model = ProphetModel()
                 preds = model.train_and_predict(
                     data.dates,
-                    data.target.rename(None).cpu().numpy()
+                    target.rename(None).cpu().numpy()
                 )
             
             # Evaluate predictions
             result = {
                 "predictions": preds.tolist(),
                 "metrics": evaluate_predictions(
-                    data.target.rename(None).cpu().numpy(),
+                    target.rename(None).cpu().numpy(),
                     preds
                 )
             }
@@ -128,21 +133,24 @@ def train_parallel(
     
     # Update feature_dates and actual if they're empty
     if not results["feature_dates"]:
-        results["feature_dates"] = {
-            "promotions": data.feature_dates["promotions"],
-            "weather": data.feature_dates["weather"],
-            "sports": data.feature_dates["sports"],
-            "school": data.feature_dates["school"],
-            "holidays": data.feature_dates["holidays"]
-        }
+        results["feature_dates"] = data.feature_dates
     if not results["actual"]:
-        results["actual"] = data.target.cpu().rename(None).tolist()
+        results["actual"] = data.target.rename(None).cpu().tolist()
 
     # Get all feature combinations
     all_combinations = prepare_feature_combinations(data, logger)
     
+    # Remove tensor names for multiprocessing
+    data_unnamed = DatasetFeatures(
+        features=data.features.rename(None),
+        temporal=data.temporal.rename(None),
+        target=data.target.rename(None),
+        dates=data.dates,
+        feature_dates=data.feature_dates
+    )
+    
     # Create partial function with fixed arguments
-    process_func = partial(process_single_model, data=data, logger=logger, model_name=model_name)
+    process_func = partial(process_single_model, data=data_unnamed, logger=logger, model_name=model_name)
     
     # Process combinations in parallel
     completed = 0
