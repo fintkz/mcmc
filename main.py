@@ -14,6 +14,7 @@ import os
 import logging
 from datetime import datetime
 from sklearn.preprocessing import StandardScaler
+import argparse
 
 
 def setup_logging():
@@ -151,9 +152,22 @@ def process_gpu_task(task: tuple) -> tuple:
 
         # Train Prophet (CPU model)
         logger.info(f"Training Prophet for {combo_name}")
-        prophet_preds = prophet_model.train_and_predict(
-            data.dates, y.rename(None).cpu().numpy()
-        )
+        if combo:
+            # For selected features, use only those features (not temporal ones)
+            features_for_prophet = X.rename(None).cpu().numpy()[:, :len(combo)]
+            feature_names = [str(i) for i in combo]
+            prophet_preds = prophet_model.train_and_predict(
+                data.dates, 
+                y.rename(None).cpu().numpy(),
+                features=features_for_prophet,
+                feature_names=feature_names
+            )
+        else:
+            # For baseline, don't use any features
+            prophet_preds = prophet_model.train_and_predict(
+                data.dates, 
+                y.rename(None).cpu().numpy()
+            )
 
         # Train TFT
         logger.info(f"Training TFT for {combo_name}")
@@ -253,7 +267,86 @@ def train_and_evaluate_all_models(
     return results
 
 
+def load_existing_results(results_path: str) -> dict:
+    """Load existing results from JSON file, create if doesn't exist"""
+    if Path(results_path).exists():
+        with open(results_path, 'r') as f:
+            return json.load(f)
+    return {
+        "feature_dates": {},
+        "actual": [],
+        "predictions": {}
+    }
+
+
+def save_results(results: dict, results_path: str):
+    """Save results to JSON file"""
+    with open(results_path, 'w') as f:
+        json.dump(results, f, indent=2)
+
+
+def train_and_evaluate_selected_model(
+    data: DatasetFeatures,
+    logger: logging.Logger,
+    model_name: str,
+    results_path: str = "results/model_results.json"
+) -> None:
+    """Train and evaluate a specific model"""
+    # Load existing results
+    results = load_existing_results(results_path)
+    
+    # Update feature_dates and actual if they're empty
+    if not results["feature_dates"]:
+        results["feature_dates"] = {
+            "promotions": data.feature_dates["promotions"],
+            "weather": data.feature_dates["weather"],
+            "sports": data.feature_dates["sports"],
+            "school": data.feature_dates["school"],
+            "holidays": data.feature_dates["holidays"]
+        }
+    if not results["actual"]:
+        results["actual"] = data.target.cpu().rename(None).tolist()
+
+    # Get all feature combinations
+    all_combinations = prepare_feature_combinations(data, logger)
+    
+    # Initialize models based on selection
+    if model_name == "prophet":
+        model = ProphetModel()
+    elif model_name == "tft":
+        model = TFTModel(num_features=data.features.size("features"), seq_length=30, batch_size=32)
+    elif model_name == "bayesian":
+        model = GPUBayesianEnsemble(input_dim=data.features.size("features"))
+    else:
+        raise ValueError(f"Unknown model: {model_name}")
+
+    # Process each combination
+    for combo in all_combinations:
+        combo_name = "_".join(map(str, combo)) if combo else "baseline"
+        logger.info(f"\nTraining {model_name} for combination: {combo_name}")
+
+        # Initialize results structure if needed
+        if combo_name not in results["predictions"]:
+            results["predictions"][combo_name] = {}
+        
+        # Process the combination
+        task_result = process_gpu_task((combo, 0, data, logger))
+        
+        # Update only the specific model's results
+        results["predictions"][combo_name][model_name] = task_result[model_name]
+        
+        # Save after each combination in case of interruption
+        save_results(results, results_path)
+
+
 def main():
+    parser = argparse.ArgumentParser(description='Train and evaluate forecasting models')
+    parser.add_argument('--model', type=str, choices=['prophet', 'tft', 'bayesian', 'all'],
+                      help='Which model to train (prophet, tft, bayesian, or all)')
+    parser.add_argument('--results-path', type=str, default='results/model_results.json',
+                      help='Path to save/load results JSON')
+    args = parser.parse_args()
+
     # Setup logging
     logger = setup_logging()
 
@@ -275,14 +368,13 @@ def main():
         generator = SyntheticDataGenerator()
         data = generator.generate_data()
 
-        # Train models and get predictions
-        logger.info("Starting model training...")
-        results = train_and_evaluate_all_models(data, logger)
-
-        # Save results
-        logger.info("Saving results...")
-        with open("results/model_results.json", "w") as f:
-            json.dump(results, f)
+        if args.model == 'all':
+            # Original full training
+            results = train_and_evaluate_all_models(data, logger)
+            save_results(results, args.results_path)
+        else:
+            # Train specific model
+            train_and_evaluate_selected_model(data, logger, args.model, args.results_path)
 
         logger.info("Training completed successfully!")
 
