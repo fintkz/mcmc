@@ -3,7 +3,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import TensorDataset, DataLoader
 from torch.optim.lr_scheduler import OneCycleLR
-import numpy as np
+import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel as DDP
+from utils import calculate_mape
 import time
 from typing import Union, Tuple
 
@@ -107,15 +109,30 @@ class TFTModel:
         seq_length: int = 30,
         batch_size: int = 128,
         device: str = "cuda",
+        rank: int = 0,
     ):
+        """Initialize TFT model
+
+        Args:
+            num_features: Number of input features
+            seq_length: Length of input sequences
+            batch_size: Training batch size
+            device: Device to use
+            rank: Rank of current process for distributed training
+        """
         self.model = TemporalFusionTransformer(
             num_features=num_features,
             hidden_size=256,
             num_heads=8,
         ).to(device)
+
+        if device == "cuda":
+            self.model = DDP(self.model, device_ids=[rank])
+
         self.seq_length = seq_length
         self.batch_size = batch_size
         self.device = device
+        self.rank = rank
 
     def create_sequences(
         self, X: torch.Tensor, y: torch.Tensor = None
@@ -168,17 +185,31 @@ class TFTModel:
             early_stopping: Whether to use early stopping
         """
         # Validate input dimensions
-        if X.size(1) != self.model.num_features:
+        if (
+            X.size(1) != self.model.module.num_features
+            if isinstance(self.model, DDP)
+            else self.model.num_features
+        ):
             raise ValueError(
-                f"Expected {self.model.num_features} features, got {X.size(1)}"
+                f"Expected {self.model.module.num_features if isinstance(self.model, DDP) else self.model.num_features} features, got {X.size(1)}"
             )
 
         # Create sequences
         X_seq, y_seq = self.create_sequences(X, y)
 
-        # Create dataset
+        # Create dataset and distributed sampler
         dataset = TensorDataset(X_seq, y_seq)
-        loader = DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
+        sampler = (
+            torch.utils.data.distributed.DistributedSampler(dataset)
+            if dist.is_initialized()
+            else None
+        )
+        loader = DataLoader(
+            dataset,
+            batch_size=self.batch_size,
+            shuffle=(sampler is None),
+            sampler=sampler,
+        )
 
         # Setup optimizer and scheduler
         optimizer = torch.optim.AdamW(
@@ -201,11 +232,14 @@ class TFTModel:
         last_log = time.time()
 
         for epoch in range(epochs):
+            if sampler is not None:
+                sampler.set_epoch(epoch)
+
             epoch_loss = 0
             self.model.train()
 
-            # Log progress every minute
-            if time.time() - last_log > 60:
+            # Log progress every minute on rank 0
+            if self.rank == 0 and time.time() - last_log > 60:
                 elapsed = time.time() - training_start
                 print(
                     f"Epoch {epoch}/{epochs}, Time elapsed: {elapsed / 60:.1f}m"
@@ -218,7 +252,6 @@ class TFTModel:
 
             batch_count = 0
             for batch_X, batch_y in loader:
-                # Move to device
                 batch_X = batch_X.to(self.device)
                 batch_y = batch_y.to(self.device)
 
@@ -226,7 +259,9 @@ class TFTModel:
                 outputs = self.model(batch_X)
                 predictions = outputs[:, -1]  # Take last timestep prediction
 
-                loss = F.mse_loss(predictions, batch_y)
+                # Use MAPE loss
+                loss = calculate_mape(predictions.cpu(), batch_y.cpu())
+                loss = torch.tensor(loss, device=self.device)
                 loss.backward()
 
                 # Gradient clipping
@@ -251,11 +286,9 @@ class TFTModel:
                     patience_counter += 1
 
                 if patience_counter >= patience:
-                    print(f"Early stopping at epoch {epoch}")
+                    if self.rank == 0:
+                        print(f"Early stopping at epoch {epoch}")
                     break
-
-            if (epoch + 1) % 20 == 0:
-                print(f"Epoch {epoch + 1}/{epochs}, Loss: {epoch_loss:.4f}")
 
     def predict(self, X: torch.Tensor) -> torch.Tensor:
         """Generate predictions
@@ -267,9 +300,13 @@ class TFTModel:
             Predictions tensor with shape [time]
         """
         # Validate input dimension
-        if X.size(1) != self.model.num_features:
+        if (
+            X.size(1) != self.model.module.num_features
+            if isinstance(self.model, DDP)
+            else self.model.num_features
+        ):
             raise ValueError(
-                f"Expected {self.model.num_features} features, got {X.size(1)}"
+                f"Expected {self.model.module.num_features if isinstance(self.model, DDP) else self.model.num_features} features, got {X.size(1)}"
             )
 
         # Create sequences

@@ -18,6 +18,7 @@ import argparse
 from concurrent.futures import ProcessPoolExecutor
 import torch.multiprocessing as mp
 from functools import partial
+import torch.distributed as dist
 
 
 def setup_logging():
@@ -322,30 +323,82 @@ def save_results(results: dict, results_path: str):
         json.dump(results, f, indent=2)
 
 
-def main():
-    parser = argparse.ArgumentParser(
-        description="Train and evaluate forecasting models"
-    )
-    parser.add_argument(
-        "--model",
-        type=str,
-        choices=["prophet", "tft", "bayesian", "all"],
-        help="Which model to train (prophet, tft, bayesian, or all)",
-    )
-    parser.add_argument(
-        "--results-path",
-        type=str,
-        default="results/model_results.json",
-        help="Path to save/load results JSON",
-    )
-    parser.add_argument(
-        "--workers",
-        type=int,
-        default=2,
-        help="Number of worker threads for parallel training",
-    )
-    args = parser.parse_args()
+def setup(rank, world_size):
+    """Initialize distributed training"""
+    os.environ["MASTER_ADDR"] = "localhost"
+    os.environ["MASTER_PORT"] = "12355"
+    dist.init_process_group("nccl", rank=rank, world_size=world_size)
 
+
+def cleanup():
+    """Cleanup distributed training"""
+    dist.destroy_process_group()
+
+
+def train_model(rank, world_size, model_type="tft"):
+    """Train model on a single GPU
+
+    Args:
+        rank: GPU rank
+        world_size: Total number of GPUs
+        model_type: Type of model to train (tft, bayesian, or prophet)
+    """
+    # Initialize distributed training
+    setup(rank, world_size)
+
+    try:
+        # Generate data
+        dataset = SyntheticDataGenerator().generate_data()
+
+        # Move data to device
+        X = dataset.features.to(f"cuda:{rank}")
+        y = dataset.target.to(f"cuda:{rank}")
+
+        # Create model based on type
+        if model_type == "tft":
+            model = TFTModel(
+                num_features=X.size(1), device=f"cuda:{rank}", rank=rank
+            )
+        elif model_type == "bayesian":
+            model = GPUBayesianEnsemble(
+                input_dim=X.size(1), device=f"cuda:{rank}", rank=rank
+            )
+        elif model_type == "prophet":
+            # Prophet doesn't need GPU/distributed training
+            if rank == 0:
+                model = ProphetModel()
+                predictions = model.train_and_predict(
+                    dates=dataset.dates,
+                    y=y.cpu().numpy(),
+                    features=X.cpu().numpy(),
+                )
+                metrics = evaluate_predictions(
+                    y.cpu(), torch.tensor(predictions)
+                )
+                print(f"Prophet Metrics: {metrics}")
+            cleanup()
+            return
+
+        # Train model
+        model.train(X, y)
+
+        # Generate predictions on rank 0
+        if rank == 0:
+            model.eval()
+            with torch.no_grad():
+                predictions = model.predict(X)
+                metrics = evaluate_predictions(y.cpu(), predictions.cpu())
+                print(f"{model_type.upper()} Metrics: {metrics}")
+
+    except Exception as e:
+        print(f"Error on rank {rank}: {str(e)}")
+        raise
+    finally:
+        cleanup()
+
+
+def main():
+    """Main training function"""
     # Setup logging
     logger = setup_logging()
 
@@ -388,23 +441,21 @@ def main():
         # Create results directory
         Path("results").mkdir(exist_ok=True)
 
-        # Generate synthetic data
-        logger.info("Generating synthetic data...")
-        generator = SyntheticDataGenerator()
-        data = generator.generate_data()
+        # Get number of available GPUs
+        world_size = torch.cuda.device_count()
+        if world_size < 1:
+            raise RuntimeError("No CUDA GPUs available")
 
-        # Train models
-        if args.model == "all":
-            # Train each model type
-            for model_type in ["prophet", "bayesian", "tft"]:
-                logger.info(f"\nTraining {model_type.upper()} models...")
-                train_parallel(
-                    data, logger, model_type, args.workers, args.results_path
-                )
-        else:
-            # Train specific model
-            train_parallel(
-                data, logger, args.model, args.workers, args.results_path
+        print(f"Training on {world_size} GPUs")
+
+        # Train each model type
+        for model_type in ["tft", "bayesian", "prophet"]:
+            print(f"\nTraining {model_type.upper()} model...")
+            mp.spawn(
+                train_model,
+                args=(world_size, model_type),
+                nprocs=world_size,
+                join=True,
             )
 
         logger.info("Training completed successfully!")
