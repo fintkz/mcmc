@@ -107,12 +107,12 @@ class GPUBayesianEnsemble(nn.Module):
     def train(self, X: torch.Tensor, y: torch.Tensor, epochs: int = 400, 
             num_samples: int = 10):
         """Train the ensemble with named tensors"""
-        # Ensure inputs have proper names
-        X = X.refine_names('time', 'features')
-        y = y.refine_names('time')
+        # Remove names before creating dataset
+        X = X.rename(None)
+        y = y.rename(None)
         
         # Create dataset
-        dataset = TensorDataset(X.rename(None), y.rename(None))
+        dataset = TensorDataset(X, y)
         loader = DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
         
         # Clear existing models
@@ -150,6 +150,7 @@ class GPUBayesianEnsemble(nn.Module):
                     epoch_loss = 0
                     
                     for batch_X, batch_y in loader:
+                        # Keep tensors unnamed throughout training
                         batch_X = batch_X.to(self.device)
                         batch_y = batch_y.to(self.device)
                         
