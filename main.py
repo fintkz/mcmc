@@ -58,7 +58,7 @@ def prepare_feature_combinations(data: DatasetFeatures, logger: logging.Logger):
     return all_combinations
 
 
-def process_gpu_task(task: tuple) -> tuple:
+def process_gpu_task(task: tuple) -> dict:
     """Process a single GPU task with named tensors"""
     combo, gpu_id, data, logger = task
     combo_name = "_".join(map(str, combo)) if combo else "baseline"
@@ -219,7 +219,7 @@ def process_gpu_task(task: tuple) -> tuple:
         del X_scaled, y_scaled, tft_model, bayesian_model
         torch.cuda.empty_cache()
 
-        return combo_name, result
+        return result
 
     except Exception as e:
         logger.error(f"Model training failed for {combo_name}: {str(e)}")
@@ -310,16 +310,6 @@ def train_and_evaluate_selected_model(
     # Get all feature combinations
     all_combinations = prepare_feature_combinations(data, logger)
     
-    # Initialize models based on selection
-    if model_name == "prophet":
-        model = ProphetModel()
-    elif model_name == "tft":
-        model = TFTModel(num_features=data.features.size("features"), seq_length=30, batch_size=32)
-    elif model_name == "bayesian":
-        model = GPUBayesianEnsemble(input_dim=data.features.size("features"))
-    else:
-        raise ValueError(f"Unknown model: {model_name}")
-
     # Process each combination
     for combo in all_combinations:
         combo_name = "_".join(map(str, combo)) if combo else "baseline"
@@ -329,14 +319,16 @@ def train_and_evaluate_selected_model(
         if combo_name not in results["predictions"]:
             results["predictions"][combo_name] = {}
         
-        # Process the combination
+        # Process the combination and get all model results
         task_result = process_gpu_task((combo, 0, data, logger))
         
         # Update only the specific model's results
-        results["predictions"][combo_name][model_name] = task_result[model_name]
-        
-        # Save after each combination in case of interruption
-        save_results(results, results_path)
+        if model_name in task_result:
+            results["predictions"][combo_name][model_name] = task_result[model_name]
+            # Save after each combination in case of interruption
+            save_results(results, results_path)
+        else:
+            logger.error(f"Model {model_name} not found in task results")
 
 
 def main():
