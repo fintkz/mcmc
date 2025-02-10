@@ -20,7 +20,10 @@ def safe_divide(a: np.ndarray, b: np.ndarray, eps: float = 1e-8) -> np.ndarray:
     return np.divide(a, b + eps, out=np.zeros_like(a), where=b != 0)
 
 
-def calculate_mape(y_true: np.ndarray, y_pred: np.ndarray) -> float:
+def calculate_mape(
+    y_true: Union[np.ndarray, torch.Tensor],
+    y_pred: Union[np.ndarray, torch.Tensor],
+) -> float:
     """Calculate Mean Absolute Percentage Error
 
     Args:
@@ -30,16 +33,37 @@ def calculate_mape(y_true: np.ndarray, y_pred: np.ndarray) -> float:
     Returns:
         MAPE value as percentage
     """
-    if np.any(y_true == 0):
-        # Filter out zeros before calculating MAPE
-        mask = y_true != 0
-        y_true = y_true[mask]
-        y_pred = y_pred[mask]
+    # Convert to numpy if tensors
+    if isinstance(y_true, torch.Tensor):
+        y_true = y_true.detach().cpu().numpy()
+    if isinstance(y_pred, torch.Tensor):
+        y_pred = y_pred.detach().cpu().numpy()
 
-    return 100.0 * np.mean(np.abs(safe_divide(y_true - y_pred, y_true)))
+    # Ensure arrays are flat
+    y_true = y_true.ravel()
+    y_pred = y_pred.ravel()
+
+    # Remove zeros from calculation
+    mask = y_true != 0
+    if not mask.any():
+        return 0.0  # All zeros case
+
+    y_true_filtered = y_true[mask]
+    y_pred_filtered = y_pred[mask]
+
+    # Calculate MAPE
+    abs_percentage_error = np.abs(
+        (y_true_filtered - y_pred_filtered) / y_true_filtered
+    )
+    mape = 100.0 * np.mean(abs_percentage_error)
+
+    return float(mape)
 
 
-def calculate_rmse(y_true: np.ndarray, y_pred: np.ndarray) -> float:
+def calculate_rmse(
+    y_true: Union[np.ndarray, torch.Tensor],
+    y_pred: Union[np.ndarray, torch.Tensor],
+) -> float:
     """Calculate Root Mean Square Error
 
     Args:
@@ -49,7 +73,17 @@ def calculate_rmse(y_true: np.ndarray, y_pred: np.ndarray) -> float:
     Returns:
         RMSE value
     """
-    return np.sqrt(np.mean((y_true - y_pred) ** 2))
+    # Convert to numpy if tensors
+    if isinstance(y_true, torch.Tensor):
+        y_true = y_true.detach().cpu().numpy()
+    if isinstance(y_pred, torch.Tensor):
+        y_pred = y_pred.detach().cpu().numpy()
+
+    # Ensure arrays are flat
+    y_true = y_true.ravel()
+    y_pred = y_pred.ravel()
+
+    return float(np.sqrt(np.mean((y_true - y_pred) ** 2)))
 
 
 def evaluate_predictions(
@@ -67,12 +101,6 @@ def evaluate_predictions(
             - rmse: Root Mean Square Error
             - mape: Mean Absolute Percentage Error
     """
-    # Convert to numpy if tensors
-    if isinstance(y_true, torch.Tensor):
-        y_true = y_true.cpu().numpy()
-    if isinstance(y_pred, torch.Tensor):
-        y_pred = y_pred.cpu().numpy()
-
     return {
         "rmse": calculate_rmse(y_true, y_pred),
         "mape": calculate_mape(y_true, y_pred),
@@ -144,7 +172,9 @@ def peak_weighted_loss(y_pred, y_true, alpha=1.5, beta=0.5):
     return (base_loss * total_weight).mean()
 
 
-def plot_predictions_comparison(y_true, predictions_dict, title="Model Comparison"):
+def plot_predictions_comparison(
+    y_true, predictions_dict, title="Model Comparison"
+):
     """
     Plot predictions from multiple models
     predictions_dict: {"model_name": predictions}
