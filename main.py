@@ -69,10 +69,15 @@ def process_single_model(combo: tuple, data: DatasetFeatures, logger: logging.Lo
     try:
         device = torch.device("cuda:0")  # Use first GPU
         
-        # Restore tensor names after multiprocessing
-        features = data.features.refine_names('time', 'features')
-        temporal = data.temporal.refine_names('time', 'temporal_features')
-        target = data.target.refine_names('time')
+        # Move data to device first
+        features = data.features.to(device)
+        temporal = data.temporal.to(device)
+        target = data.target.to(device)
+        
+        # Restore tensor names after moving to device and multiprocessing
+        features = features.refine_names('time', 'features')
+        temporal = temporal.refine_names('time', 'temporal_features')
+        target = target.refine_names('time')
         
         # Select features based on combination
         if combo:
@@ -80,14 +85,14 @@ def process_single_model(combo: tuple, data: DatasetFeatures, logger: logging.Lo
             features = features.rename(None)
             features = features.index_select(
                 1,  # features dimension is 1 (time=0, features=1)
-                torch.tensor(list(combo), device=device)
+                torch.tensor(list(combo), device=device)  # Create tensor on same device
             )
             features = features.refine_names('time', 'features')
         
         # Prepare data based on model type
         if model_name == "prophet":
             if combo:
-                # Prophet doesn't use named tensors, so just rename(None)
+                # Move to CPU for Prophet (it doesn't use GPU)
                 features_for_model = features.rename(None).cpu().numpy()
                 feature_names = [str(i) for i in combo]
                 model = ProphetModel()
