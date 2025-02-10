@@ -1,0 +1,682 @@
+2025-02-10 07:58:09,515 - INFO - CUDA available: True
+2025-02-10 07:58:09,542 - INFO - Number of GPUs: 2
+2025-02-10 07:58:09,546 - INFO - GPU 0: NVIDIA GeForce RTX 4090
+2025-02-10 07:58:09,546 - INFO - GPU 1: NVIDIA GeForce RTX 4090
+2025-02-10 07:58:09,546 - INFO - Generating synthetic data...
+2025-02-10 07:58:09,554 - INFO - Starting model training...
+2025-02-10 07:58:09,554 - INFO - Training using 2 GPUs
+2025-02-10 07:58:09,554 - INFO - Generated 32 feature combinations
+2025-02-10 07:58:09,554 - INFO - 
+Training models for combination: baseline on GPU 0
+2025-02-10 07:58:09,554 - INFO - Initial features shape: time=365, features=5
+2025-02-10 07:58:09,554 - INFO - Temporal features shape: time=365, temporal_features=6
+2025-02-10 07:58:09,681 - INFO - Combined input shape before scaling: time=365, features=11
+2025-02-10 07:58:09,681 - INFO - Target shape before scaling: time=365
+2025-02-10 07:58:09,683 - INFO - Input shape after scaling: time=365, features=11
+2025-02-10 07:58:09,683 - INFO - Target shape after scaling: time=365
+2025-02-10 07:58:09,696 - INFO - Training Prophet for baseline
+2025-02-10 07:58:09,709 - DEBUG - input tempfile: /tmp/tmp09nciyts/yfv8as2i.json
+2025-02-10 07:58:09,721 - DEBUG - input tempfile: /tmp/tmp09nciyts/y0gzgmw_.json
+2025-02-10 07:58:09,721 - DEBUG - idx 0
+2025-02-10 07:58:09,721 - DEBUG - running CmdStan, num_threads: None
+2025-02-10 07:58:09,721 - DEBUG - CmdStan args: ['/home/nilesh/workspace/mcmc/.venv/lib/python3.11/site-packages/prophet/stan_model/prophet_model.bin', 'random', 'seed=86511', 'data', 'file=/tmp/tmp09nciyts/yfv8as2i.json', 'init=/tmp/tmp09nciyts/y0gzgmw_.json', 'output', 'file=/tmp/tmp09nciyts/prophet_model6op8ks68/prophet_model-20250210075809.csv', 'method=optimize', 'algorithm=lbfgs', 'iter=10000']
+2025-02-10 07:58:09,721 - INFO - Chain [1] start processing
+2025-02-10 07:58:09,735 - INFO - Chain [1] done processing
+2025-02-10 07:58:09,812 - INFO - Training TFT for baseline
+2025-02-10 07:58:39,636 - INFO - Training Bayesian for baseline
+2025-02-10 08:05:34,819 - INFO - Prophet MAPE: 8.44%
+2025-02-10 08:05:34,819 - INFO - TFT MAPE: 9.01%
+2025-02-10 08:05:34,819 - INFO - Bayesian MAPE: 7.89%
+2025-02-10 08:05:34,957 - INFO - 
+Training models for combination: 0 on GPU 1
+2025-02-10 08:05:34,958 - INFO - Initial features shape: time=365, features=1
+2025-02-10 08:05:34,958 - INFO - Temporal features shape: time=365, temporal_features=6
+2025-02-10 08:05:34,958 - INFO - Combined input shape before scaling: time=365, features=7
+2025-02-10 08:05:34,958 - INFO - Target shape before scaling: time=365
+2025-02-10 08:05:34,959 - INFO - Input shape after scaling: time=365, features=7
+2025-02-10 08:05:34,959 - INFO - Target shape after scaling: time=365
+2025-02-10 08:05:34,962 - INFO - Training Prophet for 0
+2025-02-10 08:05:34,973 - DEBUG - input tempfile: /tmp/tmp09nciyts/xuaqh2v7.json
+2025-02-10 08:05:34,985 - DEBUG - input tempfile: /tmp/tmp09nciyts/8r3cc501.json
+2025-02-10 08:05:34,985 - DEBUG - idx 0
+2025-02-10 08:05:34,986 - DEBUG - running CmdStan, num_threads: None
+2025-02-10 08:05:34,986 - DEBUG - CmdStan args: ['/home/nilesh/workspace/mcmc/.venv/lib/python3.11/site-packages/prophet/stan_model/prophet_model.bin', 'random', 'seed=65464', 'data', 'file=/tmp/tmp09nciyts/xuaqh2v7.json', 'init=/tmp/tmp09nciyts/8r3cc501.json', 'output', 'file=/tmp/tmp09nciyts/prophet_modelqtfomprr/prophet_model-20250210080534.csv', 'method=optimize', 'algorithm=lbfgs', 'iter=10000']
+2025-02-10 08:05:34,986 - INFO - Chain [1] start processing
+2025-02-10 08:05:34,999 - INFO - Chain [1] done processing
+2025-02-10 08:05:35,077 - INFO - Training TFT for 0
+2025-02-10 08:06:07,921 - INFO - Training Bayesian for 0
+2025-02-10 08:10:56,973 - INFO - Prophet MAPE: 8.44%
+2025-02-10 08:10:56,973 - INFO - TFT MAPE: 8.49%
+2025-02-10 08:10:56,973 - INFO - Bayesian MAPE: 10.26%
+2025-02-10 08:10:56,974 - INFO - 
+Training models for combination: 1 on GPU 0
+2025-02-10 08:10:56,974 - INFO - Initial features shape: time=365, features=1
+2025-02-10 08:10:56,974 - INFO - Temporal features shape: time=365, temporal_features=6
+2025-02-10 08:10:56,982 - INFO - Combined input shape before scaling: time=365, features=7
+2025-02-10 08:10:56,982 - INFO - Target shape before scaling: time=365
+2025-02-10 08:10:56,983 - INFO - Input shape after scaling: time=365, features=7
+2025-02-10 08:10:56,983 - INFO - Target shape after scaling: time=365
+2025-02-10 08:10:56,986 - INFO - Training Prophet for 1
+2025-02-10 08:10:56,996 - DEBUG - input tempfile: /tmp/tmp09nciyts/wizp584w.json
+2025-02-10 08:10:57,008 - DEBUG - input tempfile: /tmp/tmp09nciyts/eyf6f9fd.json
+2025-02-10 08:10:57,008 - DEBUG - idx 0
+2025-02-10 08:10:57,008 - DEBUG - running CmdStan, num_threads: None
+2025-02-10 08:10:57,008 - DEBUG - CmdStan args: ['/home/nilesh/workspace/mcmc/.venv/lib/python3.11/site-packages/prophet/stan_model/prophet_model.bin', 'random', 'seed=82855', 'data', 'file=/tmp/tmp09nciyts/wizp584w.json', 'init=/tmp/tmp09nciyts/eyf6f9fd.json', 'output', 'file=/tmp/tmp09nciyts/prophet_modeloq4t7tjr/prophet_model-20250210081057.csv', 'method=optimize', 'algorithm=lbfgs', 'iter=10000']
+2025-02-10 08:10:57,008 - INFO - Chain [1] start processing
+2025-02-10 08:10:57,023 - INFO - Chain [1] done processing
+2025-02-10 08:10:57,100 - INFO - Training TFT for 1
+2025-02-10 08:11:16,587 - INFO - Training Bayesian for 1
+2025-02-10 08:23:57,394 - INFO - Prophet MAPE: 8.44%
+2025-02-10 08:23:57,394 - INFO - TFT MAPE: 9.56%
+2025-02-10 08:23:57,394 - INFO - Bayesian MAPE: 7.19%
+2025-02-10 08:23:57,490 - INFO - 
+Training models for combination: 2 on GPU 1
+2025-02-10 08:23:57,491 - INFO - Initial features shape: time=365, features=1
+2025-02-10 08:23:57,491 - INFO - Temporal features shape: time=365, temporal_features=6
+2025-02-10 08:23:57,513 - INFO - Combined input shape before scaling: time=365, features=7
+2025-02-10 08:23:57,513 - INFO - Target shape before scaling: time=365
+2025-02-10 08:23:57,514 - INFO - Input shape after scaling: time=365, features=7
+2025-02-10 08:23:57,514 - INFO - Target shape after scaling: time=365
+2025-02-10 08:23:57,516 - INFO - Training Prophet for 2
+2025-02-10 08:23:57,526 - DEBUG - input tempfile: /tmp/tmp09nciyts/5a2b8fkw.json
+2025-02-10 08:23:57,538 - DEBUG - input tempfile: /tmp/tmp09nciyts/0dexxwjq.json
+2025-02-10 08:23:57,538 - DEBUG - idx 0
+2025-02-10 08:23:57,538 - DEBUG - running CmdStan, num_threads: None
+2025-02-10 08:23:57,538 - DEBUG - CmdStan args: ['/home/nilesh/workspace/mcmc/.venv/lib/python3.11/site-packages/prophet/stan_model/prophet_model.bin', 'random', 'seed=63901', 'data', 'file=/tmp/tmp09nciyts/5a2b8fkw.json', 'init=/tmp/tmp09nciyts/0dexxwjq.json', 'output', 'file=/tmp/tmp09nciyts/prophet_modelm3sk_swh/prophet_model-20250210082357.csv', 'method=optimize', 'algorithm=lbfgs', 'iter=10000']
+2025-02-10 08:23:57,538 - INFO - Chain [1] start processing
+2025-02-10 08:23:57,552 - INFO - Chain [1] done processing
+2025-02-10 08:23:57,619 - INFO - Training TFT for 2
+2025-02-10 08:24:27,749 - INFO - Training Bayesian for 2
+2025-02-10 08:34:26,259 - INFO - Prophet MAPE: 8.44%
+2025-02-10 08:34:26,259 - INFO - TFT MAPE: 12.73%
+2025-02-10 08:34:26,259 - INFO - Bayesian MAPE: 8.78%
+2025-02-10 08:34:26,387 - INFO - 
+Training models for combination: 3 on GPU 0
+2025-02-10 08:34:26,387 - INFO - Initial features shape: time=365, features=1
+2025-02-10 08:34:26,387 - INFO - Temporal features shape: time=365, temporal_features=6
+2025-02-10 08:34:26,402 - INFO - Combined input shape before scaling: time=365, features=7
+2025-02-10 08:34:26,402 - INFO - Target shape before scaling: time=365
+2025-02-10 08:34:26,403 - INFO - Input shape after scaling: time=365, features=7
+2025-02-10 08:34:26,403 - INFO - Target shape after scaling: time=365
+2025-02-10 08:34:26,405 - INFO - Training Prophet for 3
+2025-02-10 08:34:26,415 - DEBUG - input tempfile: /tmp/tmp09nciyts/hj2l2f0u.json
+2025-02-10 08:34:26,427 - DEBUG - input tempfile: /tmp/tmp09nciyts/ff1zbuww.json
+2025-02-10 08:34:26,427 - DEBUG - idx 0
+2025-02-10 08:34:26,427 - DEBUG - running CmdStan, num_threads: None
+2025-02-10 08:34:26,427 - DEBUG - CmdStan args: ['/home/nilesh/workspace/mcmc/.venv/lib/python3.11/site-packages/prophet/stan_model/prophet_model.bin', 'random', 'seed=42169', 'data', 'file=/tmp/tmp09nciyts/hj2l2f0u.json', 'init=/tmp/tmp09nciyts/ff1zbuww.json', 'output', 'file=/tmp/tmp09nciyts/prophet_modelyw70zoib/prophet_model-20250210083426.csv', 'method=optimize', 'algorithm=lbfgs', 'iter=10000']
+2025-02-10 08:34:26,428 - INFO - Chain [1] start processing
+2025-02-10 08:34:26,440 - INFO - Chain [1] done processing
+2025-02-10 08:34:26,509 - INFO - Training TFT for 3
+2025-02-10 08:34:48,525 - INFO - Training Bayesian for 3
+2025-02-10 08:43:18,553 - INFO - Prophet MAPE: 8.44%
+2025-02-10 08:43:18,553 - INFO - TFT MAPE: 10.46%
+2025-02-10 08:43:18,553 - INFO - Bayesian MAPE: 8.38%
+2025-02-10 08:43:18,554 - INFO - 
+Training models for combination: 4 on GPU 1
+2025-02-10 08:43:18,554 - INFO - Initial features shape: time=365, features=1
+2025-02-10 08:43:18,554 - INFO - Temporal features shape: time=365, temporal_features=6
+2025-02-10 08:43:18,572 - INFO - Combined input shape before scaling: time=365, features=7
+2025-02-10 08:43:18,572 - INFO - Target shape before scaling: time=365
+2025-02-10 08:43:18,573 - INFO - Input shape after scaling: time=365, features=7
+2025-02-10 08:43:18,573 - INFO - Target shape after scaling: time=365
+2025-02-10 08:43:18,575 - INFO - Training Prophet for 4
+2025-02-10 08:43:18,585 - DEBUG - input tempfile: /tmp/tmp09nciyts/f43kxag9.json
+2025-02-10 08:43:18,597 - DEBUG - input tempfile: /tmp/tmp09nciyts/5obtmx35.json
+2025-02-10 08:43:18,597 - DEBUG - idx 0
+2025-02-10 08:43:18,597 - DEBUG - running CmdStan, num_threads: None
+2025-02-10 08:43:18,597 - DEBUG - CmdStan args: ['/home/nilesh/workspace/mcmc/.venv/lib/python3.11/site-packages/prophet/stan_model/prophet_model.bin', 'random', 'seed=75088', 'data', 'file=/tmp/tmp09nciyts/f43kxag9.json', 'init=/tmp/tmp09nciyts/5obtmx35.json', 'output', 'file=/tmp/tmp09nciyts/prophet_modelxof6h9oz/prophet_model-20250210084318.csv', 'method=optimize', 'algorithm=lbfgs', 'iter=10000']
+2025-02-10 08:43:18,597 - INFO - Chain [1] start processing
+2025-02-10 08:43:18,611 - INFO - Chain [1] done processing
+2025-02-10 08:43:18,678 - INFO - Training TFT for 4
+2025-02-10 08:43:45,620 - INFO - Training Bayesian for 4
+2025-02-10 08:52:32,390 - INFO - Prophet MAPE: 8.44%
+2025-02-10 08:52:32,390 - INFO - TFT MAPE: 12.08%
+2025-02-10 08:52:32,390 - INFO - Bayesian MAPE: 8.97%
+2025-02-10 08:52:32,391 - INFO - 
+Training models for combination: 0_1 on GPU 0
+2025-02-10 08:52:32,392 - INFO - Initial features shape: time=365, features=2
+2025-02-10 08:52:32,392 - INFO - Temporal features shape: time=365, temporal_features=6
+2025-02-10 08:52:32,408 - INFO - Combined input shape before scaling: time=365, features=8
+2025-02-10 08:52:32,408 - INFO - Target shape before scaling: time=365
+2025-02-10 08:52:32,409 - INFO - Input shape after scaling: time=365, features=8
+2025-02-10 08:52:32,409 - INFO - Target shape after scaling: time=365
+2025-02-10 08:52:32,412 - INFO - Training Prophet for 0_1
+2025-02-10 08:52:32,422 - DEBUG - input tempfile: /tmp/tmp09nciyts/zigoxtnd.json
+2025-02-10 08:52:32,434 - DEBUG - input tempfile: /tmp/tmp09nciyts/96bygl1l.json
+2025-02-10 08:52:32,434 - DEBUG - idx 0
+2025-02-10 08:52:32,434 - DEBUG - running CmdStan, num_threads: None
+2025-02-10 08:52:32,434 - DEBUG - CmdStan args: ['/home/nilesh/workspace/mcmc/.venv/lib/python3.11/site-packages/prophet/stan_model/prophet_model.bin', 'random', 'seed=89613', 'data', 'file=/tmp/tmp09nciyts/zigoxtnd.json', 'init=/tmp/tmp09nciyts/96bygl1l.json', 'output', 'file=/tmp/tmp09nciyts/prophet_modelu05lrvlt/prophet_model-20250210085232.csv', 'method=optimize', 'algorithm=lbfgs', 'iter=10000']
+2025-02-10 08:52:32,434 - INFO - Chain [1] start processing
+2025-02-10 08:52:32,448 - INFO - Chain [1] done processing
+2025-02-10 08:52:32,516 - INFO - Training TFT for 0_1
+2025-02-10 08:52:45,819 - INFO - Training Bayesian for 0_1
+2025-02-10 08:58:06,616 - INFO - Prophet MAPE: 8.44%
+2025-02-10 08:58:06,616 - INFO - TFT MAPE: 9.06%
+2025-02-10 08:58:06,616 - INFO - Bayesian MAPE: 9.84%
+2025-02-10 08:58:06,617 - INFO - 
+Training models for combination: 0_2 on GPU 1
+2025-02-10 08:58:06,617 - INFO - Initial features shape: time=365, features=2
+2025-02-10 08:58:06,618 - INFO - Temporal features shape: time=365, temporal_features=6
+2025-02-10 08:58:06,633 - INFO - Combined input shape before scaling: time=365, features=8
+2025-02-10 08:58:06,633 - INFO - Target shape before scaling: time=365
+2025-02-10 08:58:06,634 - INFO - Input shape after scaling: time=365, features=8
+2025-02-10 08:58:06,634 - INFO - Target shape after scaling: time=365
+2025-02-10 08:58:06,636 - INFO - Training Prophet for 0_2
+2025-02-10 08:58:06,740 - DEBUG - input tempfile: /tmp/tmp09nciyts/fr2uindy.json
+2025-02-10 08:58:06,752 - DEBUG - input tempfile: /tmp/tmp09nciyts/nwftcu72.json
+2025-02-10 08:58:06,752 - DEBUG - idx 0
+2025-02-10 08:58:06,752 - DEBUG - running CmdStan, num_threads: None
+2025-02-10 08:58:06,752 - DEBUG - CmdStan args: ['/home/nilesh/workspace/mcmc/.venv/lib/python3.11/site-packages/prophet/stan_model/prophet_model.bin', 'random', 'seed=63846', 'data', 'file=/tmp/tmp09nciyts/fr2uindy.json', 'init=/tmp/tmp09nciyts/nwftcu72.json', 'output', 'file=/tmp/tmp09nciyts/prophet_modellf3nf8bs/prophet_model-20250210085806.csv', 'method=optimize', 'algorithm=lbfgs', 'iter=10000']
+2025-02-10 08:58:06,752 - INFO - Chain [1] start processing
+2025-02-10 08:58:06,766 - INFO - Chain [1] done processing
+2025-02-10 08:58:06,835 - INFO - Training TFT for 0_2
+2025-02-10 08:58:35,799 - INFO - Training Bayesian for 0_2
+2025-02-10 09:06:52,273 - INFO - Prophet MAPE: 8.44%
+2025-02-10 09:06:52,274 - INFO - TFT MAPE: 9.68%
+2025-02-10 09:06:52,274 - INFO - Bayesian MAPE: 8.13%
+2025-02-10 09:06:52,275 - INFO - 
+Training models for combination: 0_3 on GPU 0
+2025-02-10 09:06:52,275 - INFO - Initial features shape: time=365, features=2
+2025-02-10 09:06:52,275 - INFO - Temporal features shape: time=365, temporal_features=6
+2025-02-10 09:06:52,291 - INFO - Combined input shape before scaling: time=365, features=8
+2025-02-10 09:06:52,291 - INFO - Target shape before scaling: time=365
+2025-02-10 09:06:52,292 - INFO - Input shape after scaling: time=365, features=8
+2025-02-10 09:06:52,292 - INFO - Target shape after scaling: time=365
+2025-02-10 09:06:52,294 - INFO - Training Prophet for 0_3
+2025-02-10 09:06:52,304 - DEBUG - input tempfile: /tmp/tmp09nciyts/18w6zzj_.json
+2025-02-10 09:06:52,316 - DEBUG - input tempfile: /tmp/tmp09nciyts/we48u37n.json
+2025-02-10 09:06:52,316 - DEBUG - idx 0
+2025-02-10 09:06:52,316 - DEBUG - running CmdStan, num_threads: None
+2025-02-10 09:06:52,316 - DEBUG - CmdStan args: ['/home/nilesh/workspace/mcmc/.venv/lib/python3.11/site-packages/prophet/stan_model/prophet_model.bin', 'random', 'seed=16022', 'data', 'file=/tmp/tmp09nciyts/18w6zzj_.json', 'init=/tmp/tmp09nciyts/we48u37n.json', 'output', 'file=/tmp/tmp09nciyts/prophet_modelslxqbvy6/prophet_model-20250210090652.csv', 'method=optimize', 'algorithm=lbfgs', 'iter=10000']
+2025-02-10 09:06:52,317 - INFO - Chain [1] start processing
+2025-02-10 09:06:52,330 - INFO - Chain [1] done processing
+2025-02-10 09:06:52,399 - INFO - Training TFT for 0_3
+2025-02-10 09:07:14,206 - INFO - Training Bayesian for 0_3
+2025-02-10 09:14:55,692 - INFO - Prophet MAPE: 8.44%
+2025-02-10 09:14:55,692 - INFO - TFT MAPE: 10.71%
+2025-02-10 09:14:55,692 - INFO - Bayesian MAPE: 8.43%
+2025-02-10 09:14:55,693 - INFO - 
+Training models for combination: 0_4 on GPU 1
+2025-02-10 09:14:55,693 - INFO - Initial features shape: time=365, features=2
+2025-02-10 09:14:55,693 - INFO - Temporal features shape: time=365, temporal_features=6
+2025-02-10 09:14:55,708 - INFO - Combined input shape before scaling: time=365, features=8
+2025-02-10 09:14:55,708 - INFO - Target shape before scaling: time=365
+2025-02-10 09:14:55,709 - INFO - Input shape after scaling: time=365, features=8
+2025-02-10 09:14:55,709 - INFO - Target shape after scaling: time=365
+2025-02-10 09:14:55,712 - INFO - Training Prophet for 0_4
+2025-02-10 09:14:55,722 - DEBUG - input tempfile: /tmp/tmp09nciyts/qwo8auig.json
+2025-02-10 09:14:55,733 - DEBUG - input tempfile: /tmp/tmp09nciyts/zx6bxu_r.json
+2025-02-10 09:14:55,734 - DEBUG - idx 0
+2025-02-10 09:14:55,734 - DEBUG - running CmdStan, num_threads: None
+2025-02-10 09:14:55,734 - DEBUG - CmdStan args: ['/home/nilesh/workspace/mcmc/.venv/lib/python3.11/site-packages/prophet/stan_model/prophet_model.bin', 'random', 'seed=10702', 'data', 'file=/tmp/tmp09nciyts/qwo8auig.json', 'init=/tmp/tmp09nciyts/zx6bxu_r.json', 'output', 'file=/tmp/tmp09nciyts/prophet_model0l68hfq7/prophet_model-20250210091455.csv', 'method=optimize', 'algorithm=lbfgs', 'iter=10000']
+2025-02-10 09:14:55,734 - INFO - Chain [1] start processing
+2025-02-10 09:14:55,747 - INFO - Chain [1] done processing
+2025-02-10 09:14:55,813 - INFO - Training TFT for 0_4
+2025-02-10 09:15:26,180 - INFO - Training Bayesian for 0_4
+2025-02-10 09:20:59,828 - INFO - Prophet MAPE: 8.44%
+2025-02-10 09:20:59,828 - INFO - TFT MAPE: 7.30%
+2025-02-10 09:20:59,828 - INFO - Bayesian MAPE: 9.89%
+2025-02-10 09:20:59,829 - INFO - 
+Training models for combination: 1_2 on GPU 0
+2025-02-10 09:20:59,829 - INFO - Initial features shape: time=365, features=2
+2025-02-10 09:20:59,829 - INFO - Temporal features shape: time=365, temporal_features=6
+2025-02-10 09:20:59,849 - INFO - Combined input shape before scaling: time=365, features=8
+2025-02-10 09:20:59,849 - INFO - Target shape before scaling: time=365
+2025-02-10 09:20:59,850 - INFO - Input shape after scaling: time=365, features=8
+2025-02-10 09:20:59,850 - INFO - Target shape after scaling: time=365
+2025-02-10 09:20:59,852 - INFO - Training Prophet for 1_2
+2025-02-10 09:20:59,862 - DEBUG - input tempfile: /tmp/tmp09nciyts/7hp9ggl3.json
+2025-02-10 09:20:59,874 - DEBUG - input tempfile: /tmp/tmp09nciyts/02adewh6.json
+2025-02-10 09:20:59,874 - DEBUG - idx 0
+2025-02-10 09:20:59,874 - DEBUG - running CmdStan, num_threads: None
+2025-02-10 09:20:59,874 - DEBUG - CmdStan args: ['/home/nilesh/workspace/mcmc/.venv/lib/python3.11/site-packages/prophet/stan_model/prophet_model.bin', 'random', 'seed=88851', 'data', 'file=/tmp/tmp09nciyts/7hp9ggl3.json', 'init=/tmp/tmp09nciyts/02adewh6.json', 'output', 'file=/tmp/tmp09nciyts/prophet_model22v4uqy8/prophet_model-20250210092059.csv', 'method=optimize', 'algorithm=lbfgs', 'iter=10000']
+2025-02-10 09:20:59,874 - INFO - Chain [1] start processing
+2025-02-10 09:20:59,888 - INFO - Chain [1] done processing
+2025-02-10 09:20:59,955 - INFO - Training TFT for 1_2
+2025-02-10 09:21:29,255 - INFO - Training Bayesian for 1_2
+2025-02-10 09:28:04,912 - INFO - Prophet MAPE: 8.44%
+2025-02-10 09:28:04,912 - INFO - TFT MAPE: 10.01%
+2025-02-10 09:28:04,912 - INFO - Bayesian MAPE: 11.82%
+2025-02-10 09:28:04,913 - INFO - 
+Training models for combination: 1_3 on GPU 1
+2025-02-10 09:28:04,913 - INFO - Initial features shape: time=365, features=2
+2025-02-10 09:28:04,913 - INFO - Temporal features shape: time=365, temporal_features=6
+2025-02-10 09:28:04,928 - INFO - Combined input shape before scaling: time=365, features=8
+2025-02-10 09:28:04,928 - INFO - Target shape before scaling: time=365
+2025-02-10 09:28:04,929 - INFO - Input shape after scaling: time=365, features=8
+2025-02-10 09:28:04,929 - INFO - Target shape after scaling: time=365
+2025-02-10 09:28:04,931 - INFO - Training Prophet for 1_3
+2025-02-10 09:28:04,941 - DEBUG - input tempfile: /tmp/tmp09nciyts/j1al0wo8.json
+2025-02-10 09:28:04,953 - DEBUG - input tempfile: /tmp/tmp09nciyts/vf6znsdy.json
+2025-02-10 09:28:04,953 - DEBUG - idx 0
+2025-02-10 09:28:04,953 - DEBUG - running CmdStan, num_threads: None
+2025-02-10 09:28:04,953 - DEBUG - CmdStan args: ['/home/nilesh/workspace/mcmc/.venv/lib/python3.11/site-packages/prophet/stan_model/prophet_model.bin', 'random', 'seed=16988', 'data', 'file=/tmp/tmp09nciyts/j1al0wo8.json', 'init=/tmp/tmp09nciyts/vf6znsdy.json', 'output', 'file=/tmp/tmp09nciyts/prophet_modelxt8u_4my/prophet_model-20250210092804.csv', 'method=optimize', 'algorithm=lbfgs', 'iter=10000']
+2025-02-10 09:28:04,953 - INFO - Chain [1] start processing
+2025-02-10 09:28:04,967 - INFO - Chain [1] done processing
+2025-02-10 09:28:05,034 - INFO - Training TFT for 1_3
+2025-02-10 09:28:27,625 - INFO - Training Bayesian for 1_3
+2025-02-10 09:33:34,691 - INFO - Prophet MAPE: 8.44%
+2025-02-10 09:33:34,691 - INFO - TFT MAPE: 10.48%
+2025-02-10 09:33:34,691 - INFO - Bayesian MAPE: 9.48%
+2025-02-10 09:33:34,692 - INFO - 
+Training models for combination: 1_4 on GPU 0
+2025-02-10 09:33:34,692 - INFO - Initial features shape: time=365, features=2
+2025-02-10 09:33:34,692 - INFO - Temporal features shape: time=365, temporal_features=6
+2025-02-10 09:33:34,715 - INFO - Combined input shape before scaling: time=365, features=8
+2025-02-10 09:33:34,715 - INFO - Target shape before scaling: time=365
+2025-02-10 09:33:34,716 - INFO - Input shape after scaling: time=365, features=8
+2025-02-10 09:33:34,716 - INFO - Target shape after scaling: time=365
+2025-02-10 09:33:34,719 - INFO - Training Prophet for 1_4
+2025-02-10 09:33:34,729 - DEBUG - input tempfile: /tmp/tmp09nciyts/t0erwqj9.json
+2025-02-10 09:33:34,740 - DEBUG - input tempfile: /tmp/tmp09nciyts/wmfk3n4n.json
+2025-02-10 09:33:34,741 - DEBUG - idx 0
+2025-02-10 09:33:34,741 - DEBUG - running CmdStan, num_threads: None
+2025-02-10 09:33:34,741 - DEBUG - CmdStan args: ['/home/nilesh/workspace/mcmc/.venv/lib/python3.11/site-packages/prophet/stan_model/prophet_model.bin', 'random', 'seed=24294', 'data', 'file=/tmp/tmp09nciyts/t0erwqj9.json', 'init=/tmp/tmp09nciyts/wmfk3n4n.json', 'output', 'file=/tmp/tmp09nciyts/prophet_modelarnu1tjo/prophet_model-20250210093334.csv', 'method=optimize', 'algorithm=lbfgs', 'iter=10000']
+2025-02-10 09:33:34,741 - INFO - Chain [1] start processing
+2025-02-10 09:33:34,753 - INFO - Chain [1] done processing
+2025-02-10 09:33:34,821 - INFO - Training TFT for 1_4
+2025-02-10 09:34:00,062 - INFO - Training Bayesian for 1_4
+2025-02-10 09:45:36,152 - INFO - Prophet MAPE: 8.44%
+2025-02-10 09:45:36,153 - INFO - TFT MAPE: 11.82%
+2025-02-10 09:45:36,153 - INFO - Bayesian MAPE: 7.70%
+2025-02-10 09:45:36,154 - INFO - 
+Training models for combination: 2_3 on GPU 1
+2025-02-10 09:45:36,154 - INFO - Initial features shape: time=365, features=2
+2025-02-10 09:45:36,154 - INFO - Temporal features shape: time=365, temporal_features=6
+2025-02-10 09:45:36,170 - INFO - Combined input shape before scaling: time=365, features=8
+2025-02-10 09:45:36,170 - INFO - Target shape before scaling: time=365
+2025-02-10 09:45:36,171 - INFO - Input shape after scaling: time=365, features=8
+2025-02-10 09:45:36,171 - INFO - Target shape after scaling: time=365
+2025-02-10 09:45:36,173 - INFO - Training Prophet for 2_3
+2025-02-10 09:45:36,183 - DEBUG - input tempfile: /tmp/tmp09nciyts/h_ujyz9j.json
+2025-02-10 09:45:36,194 - DEBUG - input tempfile: /tmp/tmp09nciyts/om7_ljf6.json
+2025-02-10 09:45:36,195 - DEBUG - idx 0
+2025-02-10 09:45:36,195 - DEBUG - running CmdStan, num_threads: None
+2025-02-10 09:45:36,195 - DEBUG - CmdStan args: ['/home/nilesh/workspace/mcmc/.venv/lib/python3.11/site-packages/prophet/stan_model/prophet_model.bin', 'random', 'seed=50109', 'data', 'file=/tmp/tmp09nciyts/h_ujyz9j.json', 'init=/tmp/tmp09nciyts/om7_ljf6.json', 'output', 'file=/tmp/tmp09nciyts/prophet_model1k3usuc7/prophet_model-20250210094536.csv', 'method=optimize', 'algorithm=lbfgs', 'iter=10000']
+2025-02-10 09:45:36,195 - INFO - Chain [1] start processing
+2025-02-10 09:45:36,208 - INFO - Chain [1] done processing
+2025-02-10 09:45:36,278 - INFO - Training TFT for 2_3
+2025-02-10 09:46:04,136 - INFO - Training Bayesian for 2_3
+2025-02-10 09:51:36,965 - INFO - Prophet MAPE: 8.44%
+2025-02-10 09:51:36,965 - INFO - TFT MAPE: 12.72%
+2025-02-10 09:51:36,965 - INFO - Bayesian MAPE: 9.18%
+2025-02-10 09:51:36,966 - INFO - 
+Training models for combination: 2_4 on GPU 0
+2025-02-10 09:51:36,967 - INFO - Initial features shape: time=365, features=2
+2025-02-10 09:51:36,967 - INFO - Temporal features shape: time=365, temporal_features=6
+2025-02-10 09:51:36,981 - INFO - Combined input shape before scaling: time=365, features=8
+2025-02-10 09:51:36,981 - INFO - Target shape before scaling: time=365
+2025-02-10 09:51:36,982 - INFO - Input shape after scaling: time=365, features=8
+2025-02-10 09:51:36,982 - INFO - Target shape after scaling: time=365
+2025-02-10 09:51:36,985 - INFO - Training Prophet for 2_4
+2025-02-10 09:51:36,995 - DEBUG - input tempfile: /tmp/tmp09nciyts/yqrx6p9m.json
+2025-02-10 09:51:37,006 - DEBUG - input tempfile: /tmp/tmp09nciyts/8ac6dxs6.json
+2025-02-10 09:51:37,007 - DEBUG - idx 0
+2025-02-10 09:51:37,007 - DEBUG - running CmdStan, num_threads: None
+2025-02-10 09:51:37,007 - DEBUG - CmdStan args: ['/home/nilesh/workspace/mcmc/.venv/lib/python3.11/site-packages/prophet/stan_model/prophet_model.bin', 'random', 'seed=19306', 'data', 'file=/tmp/tmp09nciyts/yqrx6p9m.json', 'init=/tmp/tmp09nciyts/8ac6dxs6.json', 'output', 'file=/tmp/tmp09nciyts/prophet_modeln5u39uyg/prophet_model-20250210095137.csv', 'method=optimize', 'algorithm=lbfgs', 'iter=10000']
+2025-02-10 09:51:37,007 - INFO - Chain [1] start processing
+2025-02-10 09:51:37,020 - INFO - Chain [1] done processing
+2025-02-10 09:51:37,093 - INFO - Training TFT for 2_4
+2025-02-10 09:52:05,160 - INFO - Training Bayesian for 2_4
+2025-02-10 10:06:00,821 - INFO - Prophet MAPE: 8.44%
+2025-02-10 10:06:00,822 - INFO - TFT MAPE: 10.72%
+2025-02-10 10:06:00,822 - INFO - Bayesian MAPE: 7.35%
+2025-02-10 10:06:00,823 - INFO - 
+Training models for combination: 3_4 on GPU 1
+2025-02-10 10:06:00,823 - INFO - Initial features shape: time=365, features=2
+2025-02-10 10:06:00,823 - INFO - Temporal features shape: time=365, temporal_features=6
+2025-02-10 10:06:00,846 - INFO - Combined input shape before scaling: time=365, features=8
+2025-02-10 10:06:00,846 - INFO - Target shape before scaling: time=365
+2025-02-10 10:06:00,847 - INFO - Input shape after scaling: time=365, features=8
+2025-02-10 10:06:00,847 - INFO - Target shape after scaling: time=365
+2025-02-10 10:06:00,849 - INFO - Training Prophet for 3_4
+2025-02-10 10:06:00,859 - DEBUG - input tempfile: /tmp/tmp09nciyts/rgy3cxgj.json
+2025-02-10 10:06:00,871 - DEBUG - input tempfile: /tmp/tmp09nciyts/06_mmdmg.json
+2025-02-10 10:06:00,871 - DEBUG - idx 0
+2025-02-10 10:06:00,871 - DEBUG - running CmdStan, num_threads: None
+2025-02-10 10:06:00,871 - DEBUG - CmdStan args: ['/home/nilesh/workspace/mcmc/.venv/lib/python3.11/site-packages/prophet/stan_model/prophet_model.bin', 'random', 'seed=932', 'data', 'file=/tmp/tmp09nciyts/rgy3cxgj.json', 'init=/tmp/tmp09nciyts/06_mmdmg.json', 'output', 'file=/tmp/tmp09nciyts/prophet_modelvquwovfd/prophet_model-20250210100600.csv', 'method=optimize', 'algorithm=lbfgs', 'iter=10000']
+2025-02-10 10:06:00,871 - INFO - Chain [1] start processing
+2025-02-10 10:06:00,885 - INFO - Chain [1] done processing
+2025-02-10 10:06:00,959 - INFO - Training TFT for 3_4
+2025-02-10 10:06:31,874 - INFO - Training Bayesian for 3_4
+2025-02-10 10:16:09,221 - INFO - Prophet MAPE: 8.44%
+2025-02-10 10:16:09,221 - INFO - TFT MAPE: 8.94%
+2025-02-10 10:16:09,221 - INFO - Bayesian MAPE: 7.88%
+2025-02-10 10:16:09,222 - INFO - 
+Training models for combination: 0_1_2 on GPU 0
+2025-02-10 10:16:09,222 - INFO - Initial features shape: time=365, features=3
+2025-02-10 10:16:09,223 - INFO - Temporal features shape: time=365, temporal_features=6
+2025-02-10 10:16:09,230 - INFO - Combined input shape before scaling: time=365, features=9
+2025-02-10 10:16:09,230 - INFO - Target shape before scaling: time=365
+2025-02-10 10:16:09,231 - INFO - Input shape after scaling: time=365, features=9
+2025-02-10 10:16:09,231 - INFO - Target shape after scaling: time=365
+2025-02-10 10:16:09,234 - INFO - Training Prophet for 0_1_2
+2025-02-10 10:16:09,244 - DEBUG - input tempfile: /tmp/tmp09nciyts/bj5m1gge.json
+2025-02-10 10:16:09,255 - DEBUG - input tempfile: /tmp/tmp09nciyts/l_8qexfa.json
+2025-02-10 10:16:09,256 - DEBUG - idx 0
+2025-02-10 10:16:09,256 - DEBUG - running CmdStan, num_threads: None
+2025-02-10 10:16:09,256 - DEBUG - CmdStan args: ['/home/nilesh/workspace/mcmc/.venv/lib/python3.11/site-packages/prophet/stan_model/prophet_model.bin', 'random', 'seed=22086', 'data', 'file=/tmp/tmp09nciyts/bj5m1gge.json', 'init=/tmp/tmp09nciyts/l_8qexfa.json', 'output', 'file=/tmp/tmp09nciyts/prophet_modelj0y658tg/prophet_model-20250210101609.csv', 'method=optimize', 'algorithm=lbfgs', 'iter=10000']
+2025-02-10 10:16:09,256 - INFO - Chain [1] start processing
+2025-02-10 10:16:09,269 - INFO - Chain [1] done processing
+2025-02-10 10:16:09,336 - INFO - Training TFT for 0_1_2
+2025-02-10 10:16:26,656 - INFO - Training Bayesian for 0_1_2
+2025-02-10 10:23:58,326 - INFO - Prophet MAPE: 8.44%
+2025-02-10 10:23:58,326 - INFO - TFT MAPE: 8.49%
+2025-02-10 10:23:58,326 - INFO - Bayesian MAPE: 9.07%
+2025-02-10 10:23:58,328 - INFO - 
+Training models for combination: 0_1_3 on GPU 1
+2025-02-10 10:23:58,328 - INFO - Initial features shape: time=365, features=3
+2025-02-10 10:23:58,328 - INFO - Temporal features shape: time=365, temporal_features=6
+2025-02-10 10:23:58,344 - INFO - Combined input shape before scaling: time=365, features=9
+2025-02-10 10:23:58,344 - INFO - Target shape before scaling: time=365
+2025-02-10 10:23:58,346 - INFO - Input shape after scaling: time=365, features=9
+2025-02-10 10:23:58,346 - INFO - Target shape after scaling: time=365
+2025-02-10 10:23:58,348 - INFO - Training Prophet for 0_1_3
+2025-02-10 10:23:58,358 - DEBUG - input tempfile: /tmp/tmp09nciyts/e86c_2wf.json
+2025-02-10 10:23:58,369 - DEBUG - input tempfile: /tmp/tmp09nciyts/grdzo4xb.json
+2025-02-10 10:23:58,370 - DEBUG - idx 0
+2025-02-10 10:23:58,370 - DEBUG - running CmdStan, num_threads: None
+2025-02-10 10:23:58,370 - DEBUG - CmdStan args: ['/home/nilesh/workspace/mcmc/.venv/lib/python3.11/site-packages/prophet/stan_model/prophet_model.bin', 'random', 'seed=4175', 'data', 'file=/tmp/tmp09nciyts/e86c_2wf.json', 'init=/tmp/tmp09nciyts/grdzo4xb.json', 'output', 'file=/tmp/tmp09nciyts/prophet_modelkaelm37t/prophet_model-20250210102358.csv', 'method=optimize', 'algorithm=lbfgs', 'iter=10000']
+2025-02-10 10:23:58,370 - INFO - Chain [1] start processing
+2025-02-10 10:23:58,384 - INFO - Chain [1] done processing
+2025-02-10 10:23:58,454 - INFO - Training TFT for 0_1_3
+2025-02-10 10:24:16,033 - INFO - Training Bayesian for 0_1_3
+2025-02-10 10:30:38,409 - INFO - Prophet MAPE: 8.44%
+2025-02-10 10:30:38,409 - INFO - TFT MAPE: 9.88%
+2025-02-10 10:30:38,409 - INFO - Bayesian MAPE: 9.66%
+2025-02-10 10:30:38,410 - INFO - 
+Training models for combination: 0_1_4 on GPU 0
+2025-02-10 10:30:38,410 - INFO - Initial features shape: time=365, features=3
+2025-02-10 10:30:38,410 - INFO - Temporal features shape: time=365, temporal_features=6
+2025-02-10 10:30:38,430 - INFO - Combined input shape before scaling: time=365, features=9
+2025-02-10 10:30:38,430 - INFO - Target shape before scaling: time=365
+2025-02-10 10:30:38,431 - INFO - Input shape after scaling: time=365, features=9
+2025-02-10 10:30:38,431 - INFO - Target shape after scaling: time=365
+2025-02-10 10:30:38,433 - INFO - Training Prophet for 0_1_4
+2025-02-10 10:30:38,443 - DEBUG - input tempfile: /tmp/tmp09nciyts/lf985vav.json
+2025-02-10 10:30:38,455 - DEBUG - input tempfile: /tmp/tmp09nciyts/qmu60rw2.json
+2025-02-10 10:30:38,455 - DEBUG - idx 0
+2025-02-10 10:30:38,455 - DEBUG - running CmdStan, num_threads: None
+2025-02-10 10:30:38,455 - DEBUG - CmdStan args: ['/home/nilesh/workspace/mcmc/.venv/lib/python3.11/site-packages/prophet/stan_model/prophet_model.bin', 'random', 'seed=72210', 'data', 'file=/tmp/tmp09nciyts/lf985vav.json', 'init=/tmp/tmp09nciyts/qmu60rw2.json', 'output', 'file=/tmp/tmp09nciyts/prophet_model3cco5atr/prophet_model-20250210103038.csv', 'method=optimize', 'algorithm=lbfgs', 'iter=10000']
+2025-02-10 10:30:38,455 - INFO - Chain [1] start processing
+2025-02-10 10:30:38,469 - INFO - Chain [1] done processing
+2025-02-10 10:30:38,539 - INFO - Training TFT for 0_1_4
+2025-02-10 10:30:55,764 - INFO - Training Bayesian for 0_1_4
+2025-02-10 10:40:27,636 - INFO - Prophet MAPE: 8.44%
+2025-02-10 10:40:27,636 - INFO - TFT MAPE: 8.93%
+2025-02-10 10:40:27,636 - INFO - Bayesian MAPE: 8.08%
+2025-02-10 10:40:27,637 - INFO - 
+Training models for combination: 0_2_3 on GPU 1
+2025-02-10 10:40:27,637 - INFO - Initial features shape: time=365, features=3
+2025-02-10 10:40:27,637 - INFO - Temporal features shape: time=365, temporal_features=6
+2025-02-10 10:40:27,652 - INFO - Combined input shape before scaling: time=365, features=9
+2025-02-10 10:40:27,653 - INFO - Target shape before scaling: time=365
+2025-02-10 10:40:27,654 - INFO - Input shape after scaling: time=365, features=9
+2025-02-10 10:40:27,654 - INFO - Target shape after scaling: time=365
+2025-02-10 10:40:27,656 - INFO - Training Prophet for 0_2_3
+2025-02-10 10:40:27,666 - DEBUG - input tempfile: /tmp/tmp09nciyts/qzxocaar.json
+2025-02-10 10:40:27,678 - DEBUG - input tempfile: /tmp/tmp09nciyts/zbmf6bn7.json
+2025-02-10 10:40:27,678 - DEBUG - idx 0
+2025-02-10 10:40:27,678 - DEBUG - running CmdStan, num_threads: None
+2025-02-10 10:40:27,678 - DEBUG - CmdStan args: ['/home/nilesh/workspace/mcmc/.venv/lib/python3.11/site-packages/prophet/stan_model/prophet_model.bin', 'random', 'seed=41981', 'data', 'file=/tmp/tmp09nciyts/qzxocaar.json', 'init=/tmp/tmp09nciyts/zbmf6bn7.json', 'output', 'file=/tmp/tmp09nciyts/prophet_model1xbxw5d7/prophet_model-20250210104027.csv', 'method=optimize', 'algorithm=lbfgs', 'iter=10000']
+2025-02-10 10:40:27,678 - INFO - Chain [1] start processing
+2025-02-10 10:40:27,692 - INFO - Chain [1] done processing
+2025-02-10 10:40:27,762 - INFO - Training TFT for 0_2_3
+2025-02-10 10:40:44,379 - INFO - Training Bayesian for 0_2_3
+2025-02-10 10:48:06,490 - INFO - Prophet MAPE: 8.44%
+2025-02-10 10:48:06,490 - INFO - TFT MAPE: 8.78%
+2025-02-10 10:48:06,490 - INFO - Bayesian MAPE: 8.85%
+2025-02-10 10:48:06,491 - INFO - 
+Training models for combination: 0_2_4 on GPU 0
+2025-02-10 10:48:06,491 - INFO - Initial features shape: time=365, features=3
+2025-02-10 10:48:06,491 - INFO - Temporal features shape: time=365, temporal_features=6
+2025-02-10 10:48:06,506 - INFO - Combined input shape before scaling: time=365, features=9
+2025-02-10 10:48:06,506 - INFO - Target shape before scaling: time=365
+2025-02-10 10:48:06,507 - INFO - Input shape after scaling: time=365, features=9
+2025-02-10 10:48:06,507 - INFO - Target shape after scaling: time=365
+2025-02-10 10:48:06,509 - INFO - Training Prophet for 0_2_4
+2025-02-10 10:48:06,519 - DEBUG - input tempfile: /tmp/tmp09nciyts/zhvexbd8.json
+2025-02-10 10:48:06,531 - DEBUG - input tempfile: /tmp/tmp09nciyts/gb7xtgs0.json
+2025-02-10 10:48:06,531 - DEBUG - idx 0
+2025-02-10 10:48:06,531 - DEBUG - running CmdStan, num_threads: None
+2025-02-10 10:48:06,531 - DEBUG - CmdStan args: ['/home/nilesh/workspace/mcmc/.venv/lib/python3.11/site-packages/prophet/stan_model/prophet_model.bin', 'random', 'seed=47249', 'data', 'file=/tmp/tmp09nciyts/zhvexbd8.json', 'init=/tmp/tmp09nciyts/gb7xtgs0.json', 'output', 'file=/tmp/tmp09nciyts/prophet_modelzzsji509/prophet_model-20250210104806.csv', 'method=optimize', 'algorithm=lbfgs', 'iter=10000']
+2025-02-10 10:48:06,531 - INFO - Chain [1] start processing
+2025-02-10 10:48:06,545 - INFO - Chain [1] done processing
+2025-02-10 10:48:06,614 - INFO - Training TFT for 0_2_4
+2025-02-10 10:48:31,047 - INFO - Training Bayesian for 0_2_4
+2025-02-10 10:54:15,952 - INFO - Prophet MAPE: 8.44%
+2025-02-10 10:54:15,952 - INFO - TFT MAPE: 8.55%
+2025-02-10 10:54:15,952 - INFO - Bayesian MAPE: 10.60%
+2025-02-10 10:54:15,953 - INFO - 
+Training models for combination: 0_3_4 on GPU 1
+2025-02-10 10:54:15,954 - INFO - Initial features shape: time=365, features=3
+2025-02-10 10:54:15,954 - INFO - Temporal features shape: time=365, temporal_features=6
+2025-02-10 10:54:15,967 - INFO - Combined input shape before scaling: time=365, features=9
+2025-02-10 10:54:15,967 - INFO - Target shape before scaling: time=365
+2025-02-10 10:54:15,968 - INFO - Input shape after scaling: time=365, features=9
+2025-02-10 10:54:15,968 - INFO - Target shape after scaling: time=365
+2025-02-10 10:54:15,970 - INFO - Training Prophet for 0_3_4
+2025-02-10 10:54:15,980 - DEBUG - input tempfile: /tmp/tmp09nciyts/fc68w3x8.json
+2025-02-10 10:54:15,992 - DEBUG - input tempfile: /tmp/tmp09nciyts/6syankh9.json
+2025-02-10 10:54:15,992 - DEBUG - idx 0
+2025-02-10 10:54:15,992 - DEBUG - running CmdStan, num_threads: None
+2025-02-10 10:54:15,992 - DEBUG - CmdStan args: ['/home/nilesh/workspace/mcmc/.venv/lib/python3.11/site-packages/prophet/stan_model/prophet_model.bin', 'random', 'seed=78816', 'data', 'file=/tmp/tmp09nciyts/fc68w3x8.json', 'init=/tmp/tmp09nciyts/6syankh9.json', 'output', 'file=/tmp/tmp09nciyts/prophet_model764l17ks/prophet_model-20250210105415.csv', 'method=optimize', 'algorithm=lbfgs', 'iter=10000']
+2025-02-10 10:54:15,992 - INFO - Chain [1] start processing
+2025-02-10 10:54:16,006 - INFO - Chain [1] done processing
+2025-02-10 10:54:16,073 - INFO - Training TFT for 0_3_4
+2025-02-10 10:54:43,873 - INFO - Training Bayesian for 0_3_4
+2025-02-10 11:02:10,270 - INFO - Prophet MAPE: 8.44%
+2025-02-10 11:02:10,270 - INFO - TFT MAPE: 8.13%
+2025-02-10 11:02:10,270 - INFO - Bayesian MAPE: 8.74%
+2025-02-10 11:02:10,271 - INFO - 
+Training models for combination: 1_2_3 on GPU 0
+2025-02-10 11:02:10,271 - INFO - Initial features shape: time=365, features=3
+2025-02-10 11:02:10,271 - INFO - Temporal features shape: time=365, temporal_features=6
+2025-02-10 11:02:10,286 - INFO - Combined input shape before scaling: time=365, features=9
+2025-02-10 11:02:10,286 - INFO - Target shape before scaling: time=365
+2025-02-10 11:02:10,287 - INFO - Input shape after scaling: time=365, features=9
+2025-02-10 11:02:10,287 - INFO - Target shape after scaling: time=365
+2025-02-10 11:02:10,289 - INFO - Training Prophet for 1_2_3
+2025-02-10 11:02:10,299 - DEBUG - input tempfile: /tmp/tmp09nciyts/r1gmzv3i.json
+2025-02-10 11:02:10,311 - DEBUG - input tempfile: /tmp/tmp09nciyts/j6mb8786.json
+2025-02-10 11:02:10,311 - DEBUG - idx 0
+2025-02-10 11:02:10,311 - DEBUG - running CmdStan, num_threads: None
+2025-02-10 11:02:10,311 - DEBUG - CmdStan args: ['/home/nilesh/workspace/mcmc/.venv/lib/python3.11/site-packages/prophet/stan_model/prophet_model.bin', 'random', 'seed=62354', 'data', 'file=/tmp/tmp09nciyts/r1gmzv3i.json', 'init=/tmp/tmp09nciyts/j6mb8786.json', 'output', 'file=/tmp/tmp09nciyts/prophet_modelwny1pye6/prophet_model-20250210110210.csv', 'method=optimize', 'algorithm=lbfgs', 'iter=10000']
+2025-02-10 11:02:10,311 - INFO - Chain [1] start processing
+2025-02-10 11:02:10,325 - INFO - Chain [1] done processing
+2025-02-10 11:02:10,392 - INFO - Training TFT for 1_2_3
+2025-02-10 11:02:35,298 - INFO - Training Bayesian for 1_2_3
+2025-02-10 11:09:10,483 - INFO - Prophet MAPE: 8.44%
+2025-02-10 11:09:10,483 - INFO - TFT MAPE: 9.94%
+2025-02-10 11:09:10,483 - INFO - Bayesian MAPE: 9.10%
+2025-02-10 11:09:10,484 - INFO - 
+Training models for combination: 1_2_4 on GPU 1
+2025-02-10 11:09:10,484 - INFO - Initial features shape: time=365, features=3
+2025-02-10 11:09:10,484 - INFO - Temporal features shape: time=365, temporal_features=6
+2025-02-10 11:09:10,503 - INFO - Combined input shape before scaling: time=365, features=9
+2025-02-10 11:09:10,503 - INFO - Target shape before scaling: time=365
+2025-02-10 11:09:10,504 - INFO - Input shape after scaling: time=365, features=9
+2025-02-10 11:09:10,504 - INFO - Target shape after scaling: time=365
+2025-02-10 11:09:10,507 - INFO - Training Prophet for 1_2_4
+2025-02-10 11:09:10,516 - DEBUG - input tempfile: /tmp/tmp09nciyts/izv2u59_.json
+2025-02-10 11:09:10,528 - DEBUG - input tempfile: /tmp/tmp09nciyts/5x0tpxa0.json
+2025-02-10 11:09:10,528 - DEBUG - idx 0
+2025-02-10 11:09:10,529 - DEBUG - running CmdStan, num_threads: None
+2025-02-10 11:09:10,529 - DEBUG - CmdStan args: ['/home/nilesh/workspace/mcmc/.venv/lib/python3.11/site-packages/prophet/stan_model/prophet_model.bin', 'random', 'seed=15478', 'data', 'file=/tmp/tmp09nciyts/izv2u59_.json', 'init=/tmp/tmp09nciyts/5x0tpxa0.json', 'output', 'file=/tmp/tmp09nciyts/prophet_modelv837lau2/prophet_model-20250210110910.csv', 'method=optimize', 'algorithm=lbfgs', 'iter=10000']
+2025-02-10 11:09:10,529 - INFO - Chain [1] start processing
+2025-02-10 11:09:10,542 - INFO - Chain [1] done processing
+2025-02-10 11:09:10,619 - INFO - Training TFT for 1_2_4
+2025-02-10 11:09:33,133 - INFO - Training Bayesian for 1_2_4
+2025-02-10 11:21:59,617 - INFO - Prophet MAPE: 8.44%
+2025-02-10 11:21:59,617 - INFO - TFT MAPE: 8.25%
+2025-02-10 11:21:59,617 - INFO - Bayesian MAPE: 6.55%
+2025-02-10 11:21:59,618 - INFO - 
+Training models for combination: 1_3_4 on GPU 0
+2025-02-10 11:21:59,618 - INFO - Initial features shape: time=365, features=3
+2025-02-10 11:21:59,618 - INFO - Temporal features shape: time=365, temporal_features=6
+2025-02-10 11:21:59,639 - INFO - Combined input shape before scaling: time=365, features=9
+2025-02-10 11:21:59,639 - INFO - Target shape before scaling: time=365
+2025-02-10 11:21:59,640 - INFO - Input shape after scaling: time=365, features=9
+2025-02-10 11:21:59,640 - INFO - Target shape after scaling: time=365
+2025-02-10 11:21:59,642 - INFO - Training Prophet for 1_3_4
+2025-02-10 11:21:59,652 - DEBUG - input tempfile: /tmp/tmp09nciyts/ij0j2zv9.json
+2025-02-10 11:21:59,664 - DEBUG - input tempfile: /tmp/tmp09nciyts/mz0az0o3.json
+2025-02-10 11:21:59,664 - DEBUG - idx 0
+2025-02-10 11:21:59,664 - DEBUG - running CmdStan, num_threads: None
+2025-02-10 11:21:59,664 - DEBUG - CmdStan args: ['/home/nilesh/workspace/mcmc/.venv/lib/python3.11/site-packages/prophet/stan_model/prophet_model.bin', 'random', 'seed=82071', 'data', 'file=/tmp/tmp09nciyts/ij0j2zv9.json', 'init=/tmp/tmp09nciyts/mz0az0o3.json', 'output', 'file=/tmp/tmp09nciyts/prophet_models825y1q4/prophet_model-20250210112159.csv', 'method=optimize', 'algorithm=lbfgs', 'iter=10000']
+2025-02-10 11:21:59,664 - INFO - Chain [1] start processing
+2025-02-10 11:21:59,678 - INFO - Chain [1] done processing
+2025-02-10 11:21:59,752 - INFO - Training TFT for 1_3_4
+2025-02-10 11:22:18,154 - INFO - Training Bayesian for 1_3_4
+2025-02-10 11:31:14,298 - INFO - Prophet MAPE: 8.44%
+2025-02-10 11:31:14,299 - INFO - TFT MAPE: 10.44%
+2025-02-10 11:31:14,299 - INFO - Bayesian MAPE: 7.73%
+2025-02-10 11:31:14,300 - INFO - 
+Training models for combination: 2_3_4 on GPU 1
+2025-02-10 11:31:14,300 - INFO - Initial features shape: time=365, features=3
+2025-02-10 11:31:14,300 - INFO - Temporal features shape: time=365, temporal_features=6
+2025-02-10 11:31:14,313 - INFO - Combined input shape before scaling: time=365, features=9
+2025-02-10 11:31:14,314 - INFO - Target shape before scaling: time=365
+2025-02-10 11:31:14,315 - INFO - Input shape after scaling: time=365, features=9
+2025-02-10 11:31:14,315 - INFO - Target shape after scaling: time=365
+2025-02-10 11:31:14,317 - INFO - Training Prophet for 2_3_4
+2025-02-10 11:31:14,327 - DEBUG - input tempfile: /tmp/tmp09nciyts/ohog_lyl.json
+2025-02-10 11:31:14,338 - DEBUG - input tempfile: /tmp/tmp09nciyts/h90x3eas.json
+2025-02-10 11:31:14,339 - DEBUG - idx 0
+2025-02-10 11:31:14,339 - DEBUG - running CmdStan, num_threads: None
+2025-02-10 11:31:14,339 - DEBUG - CmdStan args: ['/home/nilesh/workspace/mcmc/.venv/lib/python3.11/site-packages/prophet/stan_model/prophet_model.bin', 'random', 'seed=12934', 'data', 'file=/tmp/tmp09nciyts/ohog_lyl.json', 'init=/tmp/tmp09nciyts/h90x3eas.json', 'output', 'file=/tmp/tmp09nciyts/prophet_modela49w8gsy/prophet_model-20250210113114.csv', 'method=optimize', 'algorithm=lbfgs', 'iter=10000']
+2025-02-10 11:31:14,339 - INFO - Chain [1] start processing
+2025-02-10 11:31:14,352 - INFO - Chain [1] done processing
+2025-02-10 11:31:14,420 - INFO - Training TFT for 2_3_4
+2025-02-10 11:31:37,117 - INFO - Training Bayesian for 2_3_4
+2025-02-10 11:43:20,179 - INFO - Prophet MAPE: 8.44%
+2025-02-10 11:43:20,179 - INFO - TFT MAPE: 11.60%
+2025-02-10 11:43:20,179 - INFO - Bayesian MAPE: 7.97%
+2025-02-10 11:43:20,180 - INFO - 
+Training models for combination: 0_1_2_3 on GPU 0
+2025-02-10 11:43:20,181 - INFO - Initial features shape: time=365, features=4
+2025-02-10 11:43:20,181 - INFO - Temporal features shape: time=365, temporal_features=6
+2025-02-10 11:43:20,198 - INFO - Combined input shape before scaling: time=365, features=10
+2025-02-10 11:43:20,198 - INFO - Target shape before scaling: time=365
+2025-02-10 11:43:20,199 - INFO - Input shape after scaling: time=365, features=10
+2025-02-10 11:43:20,199 - INFO - Target shape after scaling: time=365
+2025-02-10 11:43:20,201 - INFO - Training Prophet for 0_1_2_3
+2025-02-10 11:43:20,211 - DEBUG - input tempfile: /tmp/tmp09nciyts/vtbjs8gy.json
+2025-02-10 11:43:20,223 - DEBUG - input tempfile: /tmp/tmp09nciyts/w5obldns.json
+2025-02-10 11:43:20,223 - DEBUG - idx 0
+2025-02-10 11:43:20,223 - DEBUG - running CmdStan, num_threads: None
+2025-02-10 11:43:20,223 - DEBUG - CmdStan args: ['/home/nilesh/workspace/mcmc/.venv/lib/python3.11/site-packages/prophet/stan_model/prophet_model.bin', 'random', 'seed=143', 'data', 'file=/tmp/tmp09nciyts/vtbjs8gy.json', 'init=/tmp/tmp09nciyts/w5obldns.json', 'output', 'file=/tmp/tmp09nciyts/prophet_modelc_l9t0xf/prophet_model-20250210114320.csv', 'method=optimize', 'algorithm=lbfgs', 'iter=10000']
+2025-02-10 11:43:20,223 - INFO - Chain [1] start processing
+2025-02-10 11:43:20,236 - INFO - Chain [1] done processing
+2025-02-10 11:43:20,306 - INFO - Training TFT for 0_1_2_3
+2025-02-10 11:43:38,794 - INFO - Training Bayesian for 0_1_2_3
+2025-02-10 11:48:02,572 - INFO - Prophet MAPE: 8.44%
+2025-02-10 11:48:02,572 - INFO - TFT MAPE: 9.29%
+2025-02-10 11:48:02,572 - INFO - Bayesian MAPE: 9.30%
+2025-02-10 11:48:02,573 - INFO - 
+Training models for combination: 0_1_2_4 on GPU 1
+2025-02-10 11:48:02,573 - INFO - Initial features shape: time=365, features=4
+2025-02-10 11:48:02,573 - INFO - Temporal features shape: time=365, temporal_features=6
+2025-02-10 11:48:02,594 - INFO - Combined input shape before scaling: time=365, features=10
+2025-02-10 11:48:02,594 - INFO - Target shape before scaling: time=365
+2025-02-10 11:48:02,595 - INFO - Input shape after scaling: time=365, features=10
+2025-02-10 11:48:02,595 - INFO - Target shape after scaling: time=365
+2025-02-10 11:48:02,597 - INFO - Training Prophet for 0_1_2_4
+2025-02-10 11:48:02,607 - DEBUG - input tempfile: /tmp/tmp09nciyts/e3vpm4t3.json
+2025-02-10 11:48:02,619 - DEBUG - input tempfile: /tmp/tmp09nciyts/u7xefg2_.json
+2025-02-10 11:48:02,619 - DEBUG - idx 0
+2025-02-10 11:48:02,619 - DEBUG - running CmdStan, num_threads: None
+2025-02-10 11:48:02,619 - DEBUG - CmdStan args: ['/home/nilesh/workspace/mcmc/.venv/lib/python3.11/site-packages/prophet/stan_model/prophet_model.bin', 'random', 'seed=72829', 'data', 'file=/tmp/tmp09nciyts/e3vpm4t3.json', 'init=/tmp/tmp09nciyts/u7xefg2_.json', 'output', 'file=/tmp/tmp09nciyts/prophet_modelx165af1g/prophet_model-20250210114802.csv', 'method=optimize', 'algorithm=lbfgs', 'iter=10000']
+2025-02-10 11:48:02,619 - INFO - Chain [1] start processing
+2025-02-10 11:48:02,633 - INFO - Chain [1] done processing
+2025-02-10 11:48:02,724 - INFO - Training TFT for 0_1_2_4
+2025-02-10 11:48:29,243 - INFO - Training Bayesian for 0_1_2_4
+2025-02-10 11:55:09,123 - INFO - Prophet MAPE: 8.44%
+2025-02-10 11:55:09,123 - INFO - TFT MAPE: 10.58%
+2025-02-10 11:55:09,123 - INFO - Bayesian MAPE: 8.13%
+2025-02-10 11:55:09,124 - INFO - 
+Training models for combination: 0_1_3_4 on GPU 0
+2025-02-10 11:55:09,125 - INFO - Initial features shape: time=365, features=4
+2025-02-10 11:55:09,125 - INFO - Temporal features shape: time=365, temporal_features=6
+2025-02-10 11:55:09,139 - INFO - Combined input shape before scaling: time=365, features=10
+2025-02-10 11:55:09,139 - INFO - Target shape before scaling: time=365
+2025-02-10 11:55:09,140 - INFO - Input shape after scaling: time=365, features=10
+2025-02-10 11:55:09,140 - INFO - Target shape after scaling: time=365
+2025-02-10 11:55:09,143 - INFO - Training Prophet for 0_1_3_4
+2025-02-10 11:55:09,153 - DEBUG - input tempfile: /tmp/tmp09nciyts/96qlq_nm.json
+2025-02-10 11:55:09,164 - DEBUG - input tempfile: /tmp/tmp09nciyts/3yy0cclb.json
+2025-02-10 11:55:09,165 - DEBUG - idx 0
+2025-02-10 11:55:09,165 - DEBUG - running CmdStan, num_threads: None
+2025-02-10 11:55:09,165 - DEBUG - CmdStan args: ['/home/nilesh/workspace/mcmc/.venv/lib/python3.11/site-packages/prophet/stan_model/prophet_model.bin', 'random', 'seed=77399', 'data', 'file=/tmp/tmp09nciyts/96qlq_nm.json', 'init=/tmp/tmp09nciyts/3yy0cclb.json', 'output', 'file=/tmp/tmp09nciyts/prophet_modelwm6mcxu9/prophet_model-20250210115509.csv', 'method=optimize', 'algorithm=lbfgs', 'iter=10000']
+2025-02-10 11:55:09,165 - INFO - Chain [1] start processing
+2025-02-10 11:55:09,178 - INFO - Chain [1] done processing
+2025-02-10 11:55:09,249 - INFO - Training TFT for 0_1_3_4
+2025-02-10 11:55:34,313 - INFO - Training Bayesian for 0_1_3_4
+2025-02-10 12:01:15,658 - INFO - Prophet MAPE: 8.44%
+2025-02-10 12:01:15,658 - INFO - TFT MAPE: 10.58%
+2025-02-10 12:01:15,658 - INFO - Bayesian MAPE: 9.44%
+2025-02-10 12:01:15,659 - INFO - 
+Training models for combination: 0_2_3_4 on GPU 1
+2025-02-10 12:01:15,659 - INFO - Initial features shape: time=365, features=4
+2025-02-10 12:01:15,659 - INFO - Temporal features shape: time=365, temporal_features=6
+2025-02-10 12:01:15,674 - INFO - Combined input shape before scaling: time=365, features=10
+2025-02-10 12:01:15,674 - INFO - Target shape before scaling: time=365
+2025-02-10 12:01:15,675 - INFO - Input shape after scaling: time=365, features=10
+2025-02-10 12:01:15,675 - INFO - Target shape after scaling: time=365
+2025-02-10 12:01:15,677 - INFO - Training Prophet for 0_2_3_4
+2025-02-10 12:01:15,687 - DEBUG - input tempfile: /tmp/tmp09nciyts/msfdf_1x.json
+2025-02-10 12:01:15,699 - DEBUG - input tempfile: /tmp/tmp09nciyts/s2byl8o_.json
+2025-02-10 12:01:15,700 - DEBUG - idx 0
+2025-02-10 12:01:15,700 - DEBUG - running CmdStan, num_threads: None
+2025-02-10 12:01:15,700 - DEBUG - CmdStan args: ['/home/nilesh/workspace/mcmc/.venv/lib/python3.11/site-packages/prophet/stan_model/prophet_model.bin', 'random', 'seed=14084', 'data', 'file=/tmp/tmp09nciyts/msfdf_1x.json', 'init=/tmp/tmp09nciyts/s2byl8o_.json', 'output', 'file=/tmp/tmp09nciyts/prophet_modelkoiiwzdc/prophet_model-20250210120115.csv', 'method=optimize', 'algorithm=lbfgs', 'iter=10000']
+2025-02-10 12:01:15,700 - INFO - Chain [1] start processing
+2025-02-10 12:01:15,713 - INFO - Chain [1] done processing
+2025-02-10 12:01:15,791 - INFO - Training TFT for 0_2_3_4
+2025-02-10 12:01:36,708 - INFO - Training Bayesian for 0_2_3_4
+2025-02-10 12:11:24,183 - INFO - Prophet MAPE: 8.44%
+2025-02-10 12:11:24,183 - INFO - TFT MAPE: 8.65%
+2025-02-10 12:11:24,183 - INFO - Bayesian MAPE: 7.56%
+2025-02-10 12:11:24,184 - INFO - 
+Training models for combination: 1_2_3_4 on GPU 0
+2025-02-10 12:11:24,184 - INFO - Initial features shape: time=365, features=4
+2025-02-10 12:11:24,184 - INFO - Temporal features shape: time=365, temporal_features=6
+2025-02-10 12:11:24,201 - INFO - Combined input shape before scaling: time=365, features=10
+2025-02-10 12:11:24,201 - INFO - Target shape before scaling: time=365
+2025-02-10 12:11:24,202 - INFO - Input shape after scaling: time=365, features=10
+2025-02-10 12:11:24,202 - INFO - Target shape after scaling: time=365
+2025-02-10 12:11:24,204 - INFO - Training Prophet for 1_2_3_4
+2025-02-10 12:11:24,214 - DEBUG - input tempfile: /tmp/tmp09nciyts/hgyi9jz5.json
+2025-02-10 12:11:24,226 - DEBUG - input tempfile: /tmp/tmp09nciyts/1463uqfb.json
+2025-02-10 12:11:24,226 - DEBUG - idx 0
+2025-02-10 12:11:24,226 - DEBUG - running CmdStan, num_threads: None
+2025-02-10 12:11:24,227 - DEBUG - CmdStan args: ['/home/nilesh/workspace/mcmc/.venv/lib/python3.11/site-packages/prophet/stan_model/prophet_model.bin', 'random', 'seed=31123', 'data', 'file=/tmp/tmp09nciyts/hgyi9jz5.json', 'init=/tmp/tmp09nciyts/1463uqfb.json', 'output', 'file=/tmp/tmp09nciyts/prophet_modeleat2q85y/prophet_model-20250210121124.csv', 'method=optimize', 'algorithm=lbfgs', 'iter=10000']
+2025-02-10 12:11:24,227 - INFO - Chain [1] start processing
+2025-02-10 12:11:24,240 - INFO - Chain [1] done processing
+2025-02-10 12:11:24,307 - INFO - Training TFT for 1_2_3_4
+2025-02-10 12:11:43,684 - INFO - Training Bayesian for 1_2_3_4
+2025-02-10 12:20:57,461 - INFO - Prophet MAPE: 8.44%
+2025-02-10 12:20:57,461 - INFO - TFT MAPE: 10.31%
+2025-02-10 12:20:57,461 - INFO - Bayesian MAPE: 8.63%
+2025-02-10 12:20:57,462 - INFO - 
+Training models for combination: 0_1_2_3_4 on GPU 1
+2025-02-10 12:20:57,462 - INFO - Initial features shape: time=365, features=5
+2025-02-10 12:20:57,462 - INFO - Temporal features shape: time=365, temporal_features=6
+2025-02-10 12:20:57,477 - INFO - Combined input shape before scaling: time=365, features=11
+2025-02-10 12:20:57,477 - INFO - Target shape before scaling: time=365
+2025-02-10 12:20:57,478 - INFO - Input shape after scaling: time=365, features=11
+2025-02-10 12:20:57,479 - INFO - Target shape after scaling: time=365
+2025-02-10 12:20:57,481 - INFO - Training Prophet for 0_1_2_3_4
+2025-02-10 12:20:57,491 - DEBUG - input tempfile: /tmp/tmp09nciyts/c2qnitn0.json
+2025-02-10 12:20:57,502 - DEBUG - input tempfile: /tmp/tmp09nciyts/brp0ehoo.json
+2025-02-10 12:20:57,503 - DEBUG - idx 0
+2025-02-10 12:20:57,503 - DEBUG - running CmdStan, num_threads: None
+2025-02-10 12:20:57,503 - DEBUG - CmdStan args: ['/home/nilesh/workspace/mcmc/.venv/lib/python3.11/site-packages/prophet/stan_model/prophet_model.bin', 'random', 'seed=86716', 'data', 'file=/tmp/tmp09nciyts/c2qnitn0.json', 'init=/tmp/tmp09nciyts/brp0ehoo.json', 'output', 'file=/tmp/tmp09nciyts/prophet_modeleh0nbfxc/prophet_model-20250210122057.csv', 'method=optimize', 'algorithm=lbfgs', 'iter=10000']
+2025-02-10 12:20:57,503 - INFO - Chain [1] start processing
+2025-02-10 12:20:57,515 - INFO - Chain [1] done processing
+2025-02-10 12:20:57,582 - INFO - Training TFT for 0_1_2_3_4
+2025-02-10 12:21:24,540 - INFO - Training Bayesian for 0_1_2_3_4
+2025-02-10 12:26:32,334 - INFO - Prophet MAPE: 8.44%
+2025-02-10 12:26:32,334 - INFO - TFT MAPE: 9.77%
+2025-02-10 12:26:32,334 - INFO - Bayesian MAPE: 9.34%
+2025-02-10 12:26:32,335 - INFO - Saving results...
+2025-02-10 12:26:32,372 - INFO - Training completed successfully!
