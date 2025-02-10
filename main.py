@@ -70,11 +70,13 @@ def process_gpu_task(task: tuple) -> tuple:
 
         # Select features based on combination
         if combo:
-            features_dim = data.features.names.index('features')
-            features = data.features.index_select(
-                features_dim,  # Use numerical index instead of name
-                torch.tensor(list(combo), device=data.features.device)
+            # Remove names, do selection, restore names
+            features = data.features.rename(None)  # Remove names
+            features = features.index_select(
+                1,  # features dimension is 1 (time=0, features=1)
+                torch.tensor(list(combo), device=features.device)
             )
+            features = features.refine_names('time', 'features')  # Restore names
         else:
             features = data.features
 
@@ -160,7 +162,7 @@ def process_gpu_task(task: tuple) -> tuple:
         tft_preds = tft_model.predict(X_scaled)
         # Inverse transform predictions
         tft_preds = scaler_y.inverse_transform(
-            tft_preds.reshape(-1, 1)
+            tft_preds.rename(None).reshape(-1, 1)
         ).flatten()
 
         # Train Bayesian
@@ -169,7 +171,6 @@ def process_gpu_task(task: tuple) -> tuple:
         bayesian_mean, bayesian_std = bayesian_model.predict(X_scaled)
 
         # Inverse transform predictions and uncertainty
-        # Remove names before reshape operations
         # Move to CPU and remove names before inverse transform
         bayesian_mean = scaler_y.inverse_transform(
             bayesian_mean.cpu().rename(None).reshape(-1, 1)
