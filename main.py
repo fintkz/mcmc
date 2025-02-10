@@ -37,14 +37,13 @@ def setup_logging():
 
 def prepare_feature_combinations(data: DatasetFeatures, logger: logging.Logger):
     """Generate all possible feature combinations with named tensors"""
-    features = data.features  # [time, features]
-    temporal = data.temporal  # [time, temporal_features]
+    # Remove names before getting sizes
+    features = data.features.rename(None)
+    temporal = data.temporal.rename(None)
 
-    # Get feature names
-    feature_names = [f"feature_{i}" for i in range(features.size("features"))]
-    temporal_names = [
-        f"temporal_{i}" for i in range(temporal.size("temporal_features"))
-    ]
+    # Get feature names using integer indexing
+    feature_names = [f"feature_{i}" for i in range(features.size(1))]  # dim 1 is features
+    temporal_names = [f"temporal_{i}" for i in range(temporal.size(1))]  # dim 1 is temporal_features
 
     # Generate all possible combinations of feature indices
     all_combinations = []
@@ -162,7 +161,7 @@ def process_gpu_task(task: tuple) -> tuple:
         tft_preds = tft_model.predict(X_scaled)
         # Inverse transform predictions
         tft_preds = scaler_y.inverse_transform(
-            tft_preds.rename(None).reshape(-1, 1)
+            tft_preds.reshape(-1, 1)
         ).flatten()
 
         # Train Bayesian
@@ -241,7 +240,7 @@ def train_and_evaluate_all_models(
     # Initialize results
     results = {
         "feature_dates": data.feature_dates,
-        "actual": data.target.rename(None).tolist(),
+        "actual": data.target.cpu().rename(None).tolist(),
         "predictions": {},
     }
 
