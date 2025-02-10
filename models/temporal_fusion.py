@@ -4,7 +4,7 @@ from torch.utils.data import TensorDataset, DataLoader
 from torch.optim.lr_scheduler import OneCycleLR
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
-from utils import calculate_mape
+from utils import calculate_mape_torch
 import time
 from typing import Union, Tuple
 import numpy as np
@@ -176,14 +176,7 @@ class TFTModel:
         epochs: int = 100,
         early_stopping: bool = True,
     ):
-        """Train the model
-
-        Args:
-            X: Input tensor with shape [time, features]
-            y: Target tensor with shape [time]
-            epochs: Number of training epochs
-            early_stopping: Whether to use early stopping
-        """
+        """Train the model with proper gradient handling"""
         # Debug dimensions
         print(f"Input X shape: {X.shape}")
         print(
@@ -283,9 +276,10 @@ class TFTModel:
                 outputs = self.model(batch_X)
                 predictions = outputs[:, -1]  # Take last timestep prediction
 
-                # Use MAPE loss
-                loss = calculate_mape(predictions.cpu(), batch_y.cpu())
-                loss = torch.tensor(loss, device=self.device)
+                # Calculate MAPE loss while maintaining gradients
+                loss = calculate_mape_torch(batch_y, predictions)
+
+                # Backward pass
                 loss.backward()
 
                 # Gradient clipping

@@ -210,3 +210,35 @@ def plot_attention_heatmap(attention_weights, feature_names=None):
     plt.title("Attention Weights Heatmap")
     plt.tight_layout()
     return plt.gcf()
+
+
+def calculate_mape_torch(
+    y_true: torch.Tensor, y_pred: torch.Tensor, eps: float = 1e-8
+) -> torch.Tensor:
+    """Calculate Mean Absolute Percentage Error while maintaining gradients
+
+    Args:
+        y_true: True values tensor
+        y_pred: Predicted values tensor
+        eps: Small constant to prevent division by zero
+
+    Returns:
+        MAPE value as a tensor with gradients
+    """
+    # Keep tensors on their original device
+    device = y_true.device
+
+    # Mask zero values
+    mask = y_true != 0
+
+    if not mask.any():
+        # Return zero tensor with grad_fn
+        return torch.tensor(0.0, device=device, requires_grad=True)
+
+    # Calculate percentage error
+    percentage_error = torch.abs(
+        (y_true[mask] - y_pred[mask]) / (y_true[mask] + eps)
+    )
+
+    # Return mean error as percentage
+    return 100.0 * torch.mean(percentage_error)
