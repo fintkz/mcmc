@@ -209,11 +209,17 @@ def main():
         # Enable anomaly detection
         torch.autograd.set_detect_anomaly(True)
 
+        # Set multiprocessing start method to 'spawn' for CUDA support
+        mp.set_start_method('spawn')
+        
         # Log system information
-        logger.info(f"CUDA available: {torch.cuda.is_available()}")
-        logger.info(f"Number of GPUs: {torch.cuda.device_count()}")
-        for i in range(torch.cuda.device_count()):
-            logger.info(f"GPU {i}: {torch.cuda.get_device_name(i)}")
+        if torch.cuda.is_available():
+            logger.info("CUDA available: True")
+            logger.info(f"Number of GPUs: {torch.cuda.device_count()}")
+            for i in range(torch.cuda.device_count()):
+                logger.info(f"GPU {i}: {torch.cuda.get_device_name(i)}")
+        else:
+            logger.warning("CUDA is not available, using CPU")
 
         # Create results directory
         Path("results").mkdir(exist_ok=True)
@@ -229,8 +235,7 @@ def main():
         logger.info("Training completed successfully!")
 
     except Exception as e:
-        logger.error(f"An error occurred: {str(e)}", exc_info=True)
-        torch.cuda.empty_cache()
+        logger.error(f"An error occurred: {str(e)}")
         raise
 
 
