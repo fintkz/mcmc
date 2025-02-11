@@ -120,6 +120,9 @@ class TFTModel:
             device: Device to use
             rank: Rank of current process for distributed training
         """
+        print(
+            f"[Rank {rank}] Initializing TFT model with {num_features} features"
+        )
         self.model = TemporalFusionTransformer(
             num_features=num_features,
             hidden_size=256,
@@ -128,6 +131,10 @@ class TFTModel:
 
         if device == "cuda":
             self.model = DDP(self.model, device_ids=[rank])
+            print(f"[Rank {rank}] Wrapped model in DDP")
+            print(
+                f"[Rank {rank}] Model num_features after DDP: {self.model.module.num_features}"
+            )
 
         self.seq_length = seq_length
         self.batch_size = batch_size
@@ -330,6 +337,9 @@ class TFTModel:
                 self.model.module.load_state_dict(best_model_state)
             else:
                 self.model.load_state_dict(best_model_state)
+
+    def eval(self):
+        self.model.eval()
 
     def predict(self, X: torch.Tensor) -> torch.Tensor:
         """Generate predictions

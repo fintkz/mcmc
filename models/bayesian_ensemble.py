@@ -113,11 +113,14 @@ class GPUBayesianEnsemble:
 
         # Wrap networks in DDP if using distributed training
         if device == "cuda":
-            self.networks = [DDP(net, device_ids=[rank]) for net in self.networks]
+            self.networks = [
+                DDP(net, device_ids=[rank]) for net in self.networks
+            ]
 
         # Initialize optimizers
         self.optimizers = [
-            torch.optim.Adam(net.parameters(), lr=0.001) for net in self.networks
+            torch.optim.Adam(net.parameters(), lr=0.001)
+            for net in self.networks
         ]
 
     def train(
@@ -182,7 +185,9 @@ class GPUBayesianEnsemble:
                         for _ in range(mc_samples):
                             mean, logvar = net(batch_x)
                             var = torch.exp(logvar)
-                            pred = Normal(mean.squeeze(), var.sqrt().squeeze()).sample()
+                            pred = Normal(
+                                mean.squeeze(), var.sqrt().squeeze()
+                            ).sample()
                             all_preds.append(pred)
 
                         # Average predictions
@@ -199,52 +204,52 @@ class GPUBayesianEnsemble:
                         epoch_loss += loss.item()
                         batch_count += 1
 
-                if (epoch + 1) % 10 == 0 and self.rank == 0:
-                    avg_loss = epoch_loss / batch_count
-                    print(f"Epoch {epoch + 1}/{epochs}, Loss: {avg_loss:.4f}")
-
-                # Check for NaN loss
-                if torch.isnan(torch.tensor(epoch_loss)):
-                    raise ValueError("Training loss became NaN")
+                # Print epoch results
+                if self.rank == 0:
+                    print(
+                        f"[Rank {self.rank}] Epoch {epoch + 1}/{epochs}, Loss: {epoch_loss / batch_count:.4f}"
+                    )
 
         except Exception as e:
-            print(f"Error during training: {str(e)}")
+            print(f"[Rank {self.rank}] Error during training: {e}")
             raise
 
-    def predict(
-        self, X: torch.Tensor, n_samples: int = 100
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Generate predictions with uncertainty
+    def predict(self, X: torch.Tensor, mc_samples: int = 10) -> torch.Tensor:
+        """Generate predictions using the ensemble
 
         Args:
             X: Input tensor of shape [time, features]
-            n_samples: Number of MC samples for prediction
+            mc_samples: Number of Monte Carlo samples
 
         Returns:
-            Tuple of:
-                mean: Mean predictions of shape [time]
-                std: Standard deviation of predictions of shape [time]
+            Tensor of predictions with shape [time]
         """
-        all_preds = []
+        # Validate input
+        if X.size(1) != self.input_dim:
+            raise ValueError(
+                f"Expected input dimension {self.input_dim}, got {X.size(1)}"
+            )
 
-        # Get predictions from each network
+        # Move input to device
+        X = X.to(self.device)
+
+        # Generate predictions from each network
+        all_preds = []
+        for net in self.networks:
+            preds = []
+            for _ in range(mc_samples):
+                mean, logvar = net(X)
+                var = torch.exp(logvar)
+                pred = Normal(mean.squeeze(), var.sqrt().squeeze()).sample()
+                preds.append(pred)
+            preds = torch.stack(preds).mean(0)
+            all_preds.append(preds)
+
+        # Average the predictions from all networks
+        all_preds = torch.stack(all_preds)
+        pred = all_preds.mean(0).cpu()
+        return pred
+
+    def eval(self):
         for net in self.networks:
             net.eval()
-            with torch.no_grad():
-                batch_preds = []
-                for _ in range(n_samples):
-                    mean, logvar = net(X)
-                    var = torch.exp(logvar)
-                    pred = Normal(mean.squeeze(), var.sqrt().squeeze()).sample()
-                    batch_preds.append(pred)
-                network_preds = torch.stack(batch_preds)
-                all_preds.append(network_preds)
-
-        # Stack predictions from all networks
-        all_preds = torch.stack(all_preds)  # [n_networks, n_samples, time]
-
-        # Compute mean and standard deviation
-        mean_preds = all_preds.mean(dim=(0, 1))  # [time]
-        std_preds = all_preds.std(dim=(0, 1))  # [time]
-
-        return mean_preds.cpu(), std_preds.cpu()
